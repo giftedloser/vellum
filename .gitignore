@@ -14,6 +14,9 @@ src-tauri/gen/
 # Generated native icons
 src-tauri/icons/
 
+# Local logo source pack (required masters are copied into public/)
+vellum-logo-icon-pack/
+
 # Editors and operating systems
 .DS_Store
 Thumbs.db

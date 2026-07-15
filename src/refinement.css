@@ -35,7 +35,7 @@ input {
 }
 
 button:active:not(:disabled) {
-  transform: scale(.96);
+  transform: scale(.98);
 }
 
 button:focus-visible,
@@ -43,21 +43,6 @@ select:focus-visible,
 input:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
-}
-
-.brand {
-  gap: 10px;
-  padding-left: 15px;
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: -.005em;
-}
-
-.brand-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  font-size: 12px;
 }
 
 .workspace {
@@ -210,17 +195,11 @@ input:focus-visible {
   padding: 40px;
 }
 
-.welcome-mark {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  box-shadow: 0 8px 24px rgba(48, 40, 28, .08);
-}
-
 .welcome h1 {
-  font-family: ui-serif, "Iowan Old Style", Georgia, serif;
-  font-weight: 520;
-  letter-spacing: -.035em;
+  font-family: "Fleur De Leah", cursive;
+  font-size: 68px;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 .welcome-actions button,
