@@ -1,4 +1,4 @@
-/* Universal floating controls: deliberately identical in light and dark modes. */
+/* Shared floating controls: hidden at rest, clear and identical in light and dark modes. */
 :root {
   --vellum-control-bg: rgba(22, 22, 20, .88);
   --vellum-control-bg-hover: rgba(14, 14, 13, .97);
@@ -9,21 +9,30 @@
   --vellum-control-shadow: 0 8px 28px rgba(0, 0, 0, .22), 0 1px 3px rgba(0, 0, 0, .22);
 }
 
-.window-controls-hotspot,
+/* Generous invisible activation zones keep the controls easy to reveal. */
+.window-controls-hotspot {
+  width: 188px;
+  height: 76px;
+  pointer-events: auto;
+}
+
 .viewer-zoom-hotspot {
-  pointer-events: none;
+  width: 300px;
+  height: 88px;
+  pointer-events: auto;
 }
 
 .window-controls,
 .viewer-zoom-controls {
-  pointer-events: auto;
-  opacity: .88;
+  pointer-events: none;
+  opacity: 0;
   color: var(--vellum-control-fg);
   background: var(--vellum-control-bg);
   border: 1px solid var(--vellum-control-border);
   box-shadow: var(--vellum-control-shadow);
   backdrop-filter: blur(14px) saturate(120%);
   -webkit-backdrop-filter: blur(14px) saturate(120%);
+  transform: translateY(3px) scale(.985);
   transition:
     opacity var(--motion-fast) ease,
     background-color var(--motion-fast) ease,
@@ -51,7 +60,9 @@
 .window-controls:focus-within,
 .viewer-zoom-hotspot:hover .viewer-zoom-controls,
 .viewer-zoom-controls:focus-within {
+  pointer-events: auto;
   opacity: 1;
+  transform: translateY(0) scale(1);
   background: var(--vellum-control-bg-hover);
   border-color: rgba(255, 255, 255, .22);
   box-shadow: 0 10px 34px rgba(0, 0, 0, .3), 0 1px 4px rgba(0, 0, 0, .28);
@@ -113,13 +124,6 @@
 .viewer-zoom-controls button:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .72);
-}
-
-@media (hover: none) {
-  .window-controls,
-  .viewer-zoom-controls {
-    opacity: 1;
-  }
 }
 
 @media (prefers-reduced-transparency: reduce) {
