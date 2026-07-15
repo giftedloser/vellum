@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::{
     collections::HashSet,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -40,6 +40,19 @@ fn display_name(path: &Path) -> String {
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
 
+fn file_entry(canonical: &Path) -> Result<Entry, String> {
+    if !canonical.is_file() || !supported(canonical) {
+        return Err("Vellum only opens Markdown and HTML files.".into());
+    }
+
+    Ok(Entry {
+        name: display_name(canonical),
+        path: canonical.to_string_lossy().into_owned(),
+        kind: "file",
+        children: None,
+    })
+}
+
 fn scan_canonical(
     canonical: &Path,
     depth: usize,
@@ -61,15 +74,7 @@ fn scan_canonical(
     }
 
     if canonical.is_file() {
-        if !supported(canonical) {
-            return Err("Vellum only opens Markdown and HTML files.".into());
-        }
-        return Ok(Entry {
-            name: display_name(canonical),
-            path: canonical.to_string_lossy().into_owned(),
-            kind: "file",
-            children: None,
-        });
+        return file_entry(canonical);
     }
 
     if !canonical.is_dir() {
@@ -96,12 +101,7 @@ fn scan_canonical(
         }
     }
 
-    children.sort_by(|left, right| {
-        right
-            .kind
-            .cmp(left.kind)
-            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
-    });
+    children.sort_by_cached_key(|entry| (entry.kind != "directory", entry.name.to_lowercase()));
 
     Ok(Entry {
         name: display_name(canonical),
@@ -109,6 +109,17 @@ fn scan_canonical(
         kind: "directory",
         children: Some(children),
     })
+}
+
+fn authorize_root(canonical: &Path, state: &State<'_, AppState>) -> Result<(), String> {
+    let mut roots = state
+        .allowed_roots
+        .lock()
+        .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
+    if !roots.contains(&canonical.to_path_buf()) {
+        roots.push(canonical.to_path_buf());
+    }
+    Ok(())
 }
 
 fn is_authorized(path: &Path, roots: &[PathBuf]) -> bool {
@@ -146,6 +157,25 @@ mod tests {
 }
 
 #[tauri::command]
+fn startup_document(state: State<'_, AppState>) -> Result<Option<Entry>, String> {
+    for argument in env::args_os().skip(1) {
+        let path = PathBuf::from(argument);
+        if !supported(&path) {
+            continue;
+        }
+        let canonical = match path.canonicalize() {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let entry = file_entry(&canonical)?;
+        authorize_root(&canonical, &state)?;
+        return Ok(Some(entry));
+    }
+
+    Ok(None)
+}
+
+#[tauri::command]
 fn scan_path(path: String, state: State<'_, AppState>) -> Result<Entry, String> {
     let canonical = PathBuf::from(path)
         .canonicalize()
@@ -153,15 +183,7 @@ fn scan_path(path: String, state: State<'_, AppState>) -> Result<Entry, String> 
     let mut visited = HashSet::new();
     let mut entry_count = 0;
     let entry = scan_canonical(&canonical, 0, &mut visited, &mut entry_count)?;
-
-    let mut roots = state
-        .allowed_roots
-        .lock()
-        .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
-    if !roots.contains(&canonical) {
-        roots.push(canonical);
-    }
-
+    authorize_root(&canonical, &state)?;
     Ok(entry)
 }
 
@@ -197,7 +219,11 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![scan_path, read_document])
+        .invoke_handler(tauri::generate_handler![
+            startup_document,
+            scan_path,
+            read_document
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Vellum");
 }
