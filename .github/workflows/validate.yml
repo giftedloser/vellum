@@ -24,7 +24,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Build frontend
         run: npm run build
@@ -63,7 +63,7 @@ jobs:
           workspaces: src-tauri
 
       - name: Install JavaScript dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Generate native icons
         run: npm run icons
@@ -71,5 +71,5 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
-      - name: Check Tauri core
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Test Tauri core
+        run: cargo test --manifest-path src-tauri/Cargo.toml

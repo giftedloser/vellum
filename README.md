@@ -90,14 +90,14 @@ The renderer always has visual priority. In HTML mode, the document occupies the
 
 ### Requirements
 
-- Node.js 20 or newer
+- Node.js 20.19 or newer
 - Rust stable toolchain
 - Platform-specific Tauri prerequisites
 
 ### Run locally
 
 ```bash
-npm install
+npm ci
 npm run tauri -- dev
 ```
 
@@ -126,7 +126,7 @@ Rust/Tauri core after generating icons:
 ```bash
 npm run icons
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
-cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 GitHub Actions runs both validation paths for pushes to `main` and for pull requests.
@@ -143,7 +143,6 @@ src/
   styles.css            Base themes and component styles
   refinement.css        Typography, spacing, material, and renderer hierarchy
   final.css             Accessibility, interaction details, branding, and grain isolation
-  audit.css             Post-audit control semantics and interaction fixes
 src-tauri/
   capabilities/         Least-privilege desktop permissions
   icons/                Generated Windows, macOS, and Linux application icons
@@ -189,9 +188,8 @@ These boundaries keep Vellum fast, understandable, and focused on viewing and or
 
 - File watching and automatic reload
 - Correct resolution of relative HTML assets
-- Committed JavaScript dependency lockfile
+- Release signing, checksums, and provenance
 - Native smoke tests on Windows, macOS, and Linux
-- Signed release artifacts and checksums
 - Optional system-tray behavior using the existing Vellum native icon set
 
 ## License

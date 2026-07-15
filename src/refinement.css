@@ -13,30 +13,13 @@
 }
 
 body {
-  padding: 7px;
+  padding: 0;
 }
 
 .app-shell {
   position: relative;
   isolation: isolate;
-  border-radius: var(--radius-lg);
-}
-
-.app-shell::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 100;
-  pointer-events: none;
-  border-radius: inherit;
-  opacity: .12;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.22' numOctaves='2' seed='9' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='discrete' tableValues='.2 .35 .5 .65 .8'/%3E%3CfeFuncG type='discrete' tableValues='.2 .35 .5 .65 .8'/%3E%3CfeFuncB type='discrete' tableValues='.2 .35 .5 .65 .8'/%3E%3CfeFuncA type='table' tableValues='0 .08'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.85'/%3E%3C/svg%3E");
-  mix-blend-mode: soft-light;
-}
-
-:root[data-theme="dark"] .app-shell::after {
-  opacity: .085;
-  mix-blend-mode: screen;
+  border-radius: 12px;
 }
 
 button,
@@ -52,7 +35,7 @@ input {
 }
 
 button:active:not(:disabled) {
-  transform: translateY(.5px);
+  transform: scale(.96);
 }
 
 button:focus-visible,
@@ -60,10 +43,6 @@ select:focus-visible,
 input:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
-}
-
-.titlebar {
-  height: 44px;
 }
 
 .brand {
@@ -81,13 +60,9 @@ input:focus-visible {
   font-size: 12px;
 }
 
-.window-controls button {
-  width: 45px;
-}
-
 .workspace {
-  height: calc(100% - 44px);
-  grid-template-columns: 272px minmax(0, 1fr);
+  height: 100%;
+  grid-template-columns: 256px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -95,38 +70,26 @@ input:focus-visible {
   backdrop-filter: blur(22px) saturate(118%);
 }
 
-.sidebar-heading {
-  height: 48px;
-  padding: 0 11px 0 16px;
-  font-size: 10px;
-  font-weight: 720;
-  letter-spacing: .105em;
-}
-
 .section-label {
-  height: 32px;
-  padding: 0 15px;
-  gap: 7px;
+  height: 26px;
+  padding: 0 10px;
+  gap: 5px;
   font-size: 9px;
   font-weight: 720;
   letter-spacing: .105em;
 }
 
-.recent-list,
 .tree {
-  padding-left: 9px;
-  padding-right: 9px;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
-.recent-item,
 .tree-row {
-  min-height: 31px;
+  min-height: 28px;
   border-radius: var(--radius-sm);
 }
 
-.recent-item,
-.tree-label,
-.tab span {
+.tree-label {
   font-size: 12px;
   letter-spacing: -.006em;
 }
@@ -135,13 +98,11 @@ input:focus-visible {
   border-radius: var(--radius-sm);
 }
 
-.tree-row-wrap:hover,
-.recent-item:hover {
+.tree-row-wrap:hover {
   background: color-mix(in srgb, var(--hover) 88%, transparent);
 }
 
-.tree-row-wrap.active,
-.recent-item.active {
+.tree-row-wrap.active {
   background: var(--active);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
 }
@@ -152,44 +113,8 @@ input:focus-visible {
   stroke-width: 1.8;
 }
 
-.sidebar-footer {
-  height: 44px;
-  padding: 0 9px 0 15px;
-  font-size: 9px;
-  letter-spacing: .055em;
-}
-
 .main-pane {
   position: relative;
-}
-
-.toolbar {
-  height: 45px;
-  gap: 7px;
-  padding: 0 9px;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  backdrop-filter: blur(18px) saturate(112%);
-}
-
-.tabs {
-  gap: 2px;
-}
-
-.tab {
-  height: 30px;
-  max-width: 228px;
-  padding: 0 9px !important;
-  border-radius: 8px !important;
-}
-
-.tab:hover {
-  background: var(--hover) !important;
-  color: var(--text) !important;
-}
-
-.tab.active {
-  background: var(--surface-strong) !important;
-  box-shadow: 0 1px 2px rgba(28, 24, 18, .05), inset 0 0 0 1px var(--border);
 }
 
 .content-area {
@@ -204,7 +129,7 @@ input:focus-visible {
 .markdown-body {
   font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   font-size: calc(18px * var(--font-scale));
-  line-height: 1.74;
+  line-height: var(--line-height);
   color: var(--text);
 }
 
@@ -270,32 +195,6 @@ input:focus-visible {
   box-shadow: 0 1px 0 var(--border);
 }
 
-/* HTML owns the entire browser surface. Chrome becomes a quiet overlay. */
-.main-pane:has(.html-frame) .toolbar {
-  position: absolute;
-  inset: 0 0 auto 0;
-  z-index: 20;
-  border-bottom: 0;
-  opacity: .18;
-  background: linear-gradient(to bottom, color-mix(in srgb, var(--surface) 72%, transparent), transparent);
-  backdrop-filter: none;
-}
-
-.main-pane:has(.html-frame) .toolbar:hover,
-.main-pane:has(.html-frame) .toolbar:focus-within {
-  opacity: 1;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  backdrop-filter: blur(18px) saturate(112%);
-  border-bottom: 1px solid var(--border);
-}
-
-.main-pane:has(.html-frame) .content-area {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: white;
-}
-
 .html-frame {
   position: absolute;
   inset: 0;
@@ -337,7 +236,7 @@ input:focus-visible {
 }
 
 .settings-panel {
-  width: min(600px, calc(100% - 44px));
+  width: min(680px, calc(100% - 44px));
   border-radius: 17px;
   padding: 7px 23px 12px;
 }
@@ -366,7 +265,7 @@ input:focus-visible {
 
 @media (max-width: 760px) {
   body { padding: 0; }
-  .app-shell { border-radius: 0; }
-  .workspace { grid-template-columns: 228px minmax(0, 1fr); }
+  .app-shell { border-radius: 12px; }
+  .workspace { grid-template-columns: 232px minmax(0, 1fr); }
   .document { width: calc(100% - 40px); padding-top: 44px; }
 }

@@ -10,6 +10,15 @@ This audit reviewed the React and TypeScript application, Tauri command boundary
 
 The repository has a coherent architecture and a deliberately narrow product scope. The primary risks found during the audit were corrected directly on `main`.
 
+## Build readiness verification
+
+- Fixed the Windows icon generator to invoke the installed Tauri CLI through Node instead of spawning `npx.cmd`.
+- Added the Rust dependency lockfile and switched CI installs to `npm ci`.
+- Verified the production frontend build and the Rust test suite.
+- Launched the native Windows development executable through `npm run tauri -- dev`.
+- Built the release executable plus MSI and NSIS installers through `npm run tauri -- build`.
+- Raised the React Doctor result from 62 to 86 by correcting state purity, dialog semantics, storage versioning, control labels, and button behavior.
+
 ## Corrected findings
 
 ### High — HTML sandbox isolation
@@ -80,7 +89,7 @@ CI previously checked only TypeScript and Vite.
 Resolution:
 
 - Added Rust formatting validation.
-- Added a Tauri-aware `cargo check` job with Linux desktop dependencies.
+- Added a Tauri-aware `cargo test` job with Linux desktop dependencies.
 - Generate native icon assets before the Tauri check.
 
 ### Low — dependency surface
@@ -118,10 +127,9 @@ The following require an actual desktop runtime or release environment and were 
 
 1. Resolve relative HTML assets through a controlled local asset strategy.
 2. Add file watching with debounced reload and clear stale-file handling.
-3. Add a committed dependency lockfile for reproducible JavaScript installs.
-4. Select and add a license before public distribution.
-5. Run native build and smoke-test matrices on Windows, macOS, and Linux.
-6. Add release signing, checksums, and provenance when packaging begins.
+3. Select and add a license before public distribution.
+4. Run native build and smoke-test matrices on Windows, macOS, and Linux.
+5. Add release signing, checksums, and provenance when packaging begins.
 
 ## Audit posture
 

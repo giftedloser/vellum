@@ -50,7 +50,9 @@ fn scan_canonical(
         return Err("This folder exceeds Vellum's maximum nesting depth.".into());
     }
     if *entry_count >= MAX_SCAN_ENTRIES {
-        return Err("This folder contains more entries than Vellum can safely index at once.".into());
+        return Err(
+            "This folder contains more entries than Vellum can safely index at once.".into(),
+        );
     }
     *entry_count += 1;
 
@@ -75,7 +77,10 @@ fn scan_canonical(
     }
 
     let mut children = Vec::new();
-    for entry in fs::read_dir(canonical).map_err(|error| error.to_string())?.flatten() {
+    for entry in fs::read_dir(canonical)
+        .map_err(|error| error.to_string())?
+        .flatten()
+    {
         let path = entry.path();
         if !path.is_dir() && !supported(&path) {
             continue;
@@ -114,6 +119,30 @@ fn is_authorized(path: &Path, roots: &[PathBuf]) -> bool {
             path.starts_with(root)
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn supports_only_document_extensions() {
+        assert!(supported(Path::new("notes.MD")));
+        assert!(supported(Path::new("page.html")));
+        assert!(!supported(Path::new("script.js")));
+        assert!(!supported(Path::new("README")));
+    }
+
+    #[test]
+    fn authorizes_files_and_directory_descendants() {
+        let file = PathBuf::from("library/saved.md");
+        let directory = PathBuf::from("library/docs");
+        let roots = [file.clone(), directory.clone()];
+
+        assert!(is_authorized(&file, &roots));
+        assert!(is_authorized(&directory.join("nested/page.html"), &roots));
+        assert!(!is_authorized(Path::new("library/other.md"), &roots));
+    }
 }
 
 #[tauri::command]
