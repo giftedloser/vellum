@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -8,6 +9,8 @@ use tauri::State;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["md", "markdown", "html", "htm"];
 const MAX_DOCUMENT_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_SCAN_DEPTH: usize = 32;
+const MAX_SCAN_ENTRIES: usize = 20_000;
 
 #[derive(Default)]
 struct AppState {
@@ -38,7 +41,24 @@ fn display_name(path: &Path) -> String {
         .to_string()
 }
 
-fn scan_canonical(canonical: &Path) -> Result<Entry, String> {
+fn scan_canonical(
+    canonical: &Path,
+    depth: usize,
+    visited: &mut HashSet<PathBuf>,
+    entry_count: &mut usize,
+) -> Result<Entry, String> {
+    if depth > MAX_SCAN_DEPTH {
+        return Err("This folder exceeds Vellum's maximum nesting depth.".into());
+    }
+    if *entry_count >= MAX_SCAN_ENTRIES {
+        return Err("This folder contains more entries than Vellum can safely index at once.".into());
+    }
+    *entry_count += 1;
+
+    if !visited.insert(canonical.to_path_buf()) {
+        return Err("A recursive filesystem link was skipped.".into());
+    }
+
     if canonical.is_file() {
         if !supported(canonical) {
             return Err("Vellum only opens Markdown and HTML files.".into());
@@ -55,16 +75,22 @@ fn scan_canonical(canonical: &Path) -> Result<Entry, String> {
         return Err("The selected path is not a file or directory.".into());
     }
 
-    let mut children = fs::read_dir(canonical)
-        .map_err(|error| error.to_string())?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|entry| entry.is_dir() || supported(entry))
-        .filter_map(|entry| {
-            let canonical_child = entry.canonicalize().ok()?;
-            scan_canonical(&canonical_child).ok()
-        })
-        .collect::<Vec<_>>();
+    let mut children = Vec::new();
+    for entry in fs::read_dir(canonical).map_err(|error| error.to_string())?.flatten() {
+        let path = entry.path();
+        if !path.is_dir() && !supported(&path) {
+            continue;
+        }
+        let Ok(canonical_child) = path.canonicalize() else {
+            continue;
+        };
+        if visited.contains(&canonical_child) {
+            continue;
+        }
+        if let Ok(child) = scan_canonical(&canonical_child, depth + 1, visited, entry_count) {
+            children.push(child);
+        }
+    }
 
     children.sort_by(|left, right| {
         right
@@ -96,7 +122,9 @@ fn scan_path(path: String, state: State<'_, AppState>) -> Result<Entry, String> 
     let canonical = PathBuf::from(path)
         .canonicalize()
         .map_err(|error| error.to_string())?;
-    let entry = scan_canonical(&canonical)?;
+    let mut visited = HashSet::new();
+    let mut entry_count = 0;
+    let entry = scan_canonical(&canonical, 0, &mut visited, &mut entry_count)?;
 
     let mut roots = state
         .allowed_roots
