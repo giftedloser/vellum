@@ -202,18 +202,30 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const savedRoots = readStored<string[]>("vellum.library", []);
-    void Promise.all(savedRoots.map(async (path) => {
-      try { return await invoke<Entry>("scan_path", { path }); } catch { return undefined; }
-    })).then((entries) => setRoots(entries.filter((entry): entry is Entry => Boolean(entry))));
+    let cancelled = false;
 
-    if (preferences.rememberTabs) {
+    const restore = async () => {
+      const savedRoots = readStored<string[]>("vellum.library", []);
+      const entries = await Promise.all(savedRoots.map(async (path) => {
+        try { return await invoke<Entry>("scan_path", { path }); } catch { return undefined; }
+      }));
+      if (cancelled) return;
+      setRoots(entries.filter((entry): entry is Entry => Boolean(entry)));
+
+      if (!preferences.rememberTabs) return;
       const savedTabs = readStored<string[]>("vellum.tabs", []);
       const savedActive = readStored<string | undefined>("vellum.activeTab", undefined);
-      void Promise.all(savedTabs.map((path) => openDocument(path, false))).then(() => {
-        if (savedActive && savedTabs.includes(savedActive)) setActivePath(savedActive);
-      });
-    }
+      for (const path of savedTabs) {
+        if (cancelled) return;
+        await openDocument(path, false);
+      }
+      if (!cancelled && savedActive && savedTabs.includes(savedActive)) {
+        setActivePath(savedActive);
+      }
+    };
+
+    void restore();
+    return () => { cancelled = true; };
   }, [openDocument, preferences.rememberTabs]);
 
   useEffect(() => {
@@ -358,11 +370,21 @@ function App() {
             </button>
             <div className="tabs" role="tablist" aria-label="Open documents">
               {documents.map((document) => (
-                <button key={document.path} role="tab" aria-selected={activePath === document.path} className={`tab ${activePath === document.path ? "active" : ""}`} onClick={() => setActivePath(document.path)} title={document.path}>
-                  {documentIcon(document.path, 14)}
-                  <span>{document.name}</span>
-                  <X size={13} className="tab-close" aria-label={`Close ${document.name}`} onClick={(event) => { event.stopPropagation(); closeDocument(document.path); }} />
-                </button>
+                <div key={document.path} className={`tab ${activePath === document.path ? "active" : ""}`}>
+                  <button
+                    className="tab-select"
+                    role="tab"
+                    aria-selected={activePath === document.path}
+                    onClick={() => setActivePath(document.path)}
+                    title={document.path}
+                  >
+                    {documentIcon(document.path, 14)}
+                    <span>{document.name}</span>
+                  </button>
+                  <button className="tab-close-button" onClick={() => closeDocument(document.path)} aria-label={`Close ${document.name}`} title={`Close ${document.name}`}>
+                    <X size={13} />
+                  </button>
+                </div>
               ))}
             </div>
             <div className="toolbar-actions">
@@ -394,7 +416,8 @@ function App() {
                 className="html-frame"
                 title={activeDocument.name}
                 srcDoc={activeDocument.content}
-                sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+                sandbox="allow-forms allow-modals allow-popups allow-scripts"
+                referrerPolicy="no-referrer"
               />
             )}
           </div>
@@ -406,7 +429,7 @@ function App() {
           <section className="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" onMouseDown={(event) => event.stopPropagation()}>
             <header>
               <div><span className="eyebrow">Vellum</span><h2 id="settings-title">Settings</h2></div>
-              <button onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={17} /></button>
+              <button onClick={() => setSettingsOpen(false)} aria-label="Close settings" autoFocus><X size={17} /></button>
             </header>
             <div className="setting-row">
               <div><strong>Appearance</strong><span>Choose how the application chrome is rendered.</span></div>
@@ -428,7 +451,7 @@ function App() {
             </div>
             <div className="setting-row">
               <div><strong>Restore session</strong><span>Reopen document tabs from the previous session.</span></div>
-              <label className="switch"><input type="checkbox" checked={preferences.rememberTabs} onChange={(event) => setPreferences((current) => ({ ...current, rememberTabs: event.target.checked }))} /><span aria-hidden="true" /></label>
+              <label className="switch"><input aria-label="Restore previous session" type="checkbox" checked={preferences.rememberTabs} onChange={(event) => setPreferences((current) => ({ ...current, rememberTabs: event.target.checked }))} /><span aria-hidden="true" /></label>
             </div>
             <div className="setting-row">
               <div><strong>Recent history</strong><span>Clear the list without removing saved library items.</span></div>
