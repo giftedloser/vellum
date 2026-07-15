@@ -8,6 +8,8 @@
 
 Vellum provides a persistent local library, recent files, nested folders, carefully typeset Markdown, and full-surface HTML rendering in a compact Tauri application. It does not include AI features, content generation, telemetry, or visual HTML editing.
 
+The current repository audit is documented in [`AUDIT.md`](AUDIT.md).
+
 ## Design principles
 
 Vellum is intentionally restrained.
@@ -54,11 +56,12 @@ npm run tauri -- build
 - Adjustable sidebar transparency
 - Adjustable Markdown reading width and text scale
 - Sanitized Markdown rendering
-- Sandboxed HTML rendering
+- Sandboxed HTML rendering in an opaque origin
 - Edge-to-edge HTML browser view
 - Keyboard shortcuts for common actions
 - Reduced-motion support
-- Automated TypeScript and Vite build validation
+- Explicit least-privilege Tauri capability
+- Frontend and Rust/Tauri CI validation
 - Unified application, favicon, taskbar, dock, installer, and bundle icon source
 
 ## Interface structure
@@ -110,13 +113,23 @@ npm run tauri -- build
 npm run dev
 ```
 
-### Validate the frontend
+### Validate locally
+
+Frontend:
 
 ```bash
 npm run build
 ```
 
-GitHub Actions runs the same TypeScript and Vite validation for pushes to `main` and for pull requests.
+Rust/Tauri core after generating icons:
+
+```bash
+npm run icons
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+GitHub Actions runs both validation paths for pushes to `main` and for pull requests.
 
 ## Project structure
 
@@ -129,26 +142,35 @@ src/
   App.tsx               Application state, persistence, shortcuts, settings, and renderers
   styles.css            Base themes and component styles
   refinement.css        Typography, spacing, material, and renderer hierarchy
-  final.css             Accessibility, interaction details, branding, grain isolation, and final polish
+  final.css             Accessibility, interaction details, branding, and grain isolation
+  audit.css             Post-audit control semantics and interaction fixes
 src-tauri/
+  capabilities/         Least-privilege desktop permissions
   icons/                Generated Windows, macOS, and Linux application icons
-  src/lib.rs            Constrained local filesystem commands
+  src/lib.rs            Authorized and bounded local filesystem commands
   tauri.conf.json       Desktop window, security, bundle, and icon configuration
 .github/workflows/
-  validate.yml          Automated TypeScript and Vite build validation
+  validate.yml          Frontend and Rust/Tauri validation
+AUDIT.md                Security, architecture, accessibility, and release audit
 ```
 
 ## Security model
 
-Vellum reads only supported Markdown and HTML extensions through constrained Rust commands.
+Vellum reads supported Markdown and HTML files through constrained Rust commands.
 
+- Paths are canonicalized before scanning or reading.
+- A document must be inside a file or folder explicitly added to the active Vellum library.
+- Folder traversal is cycle-aware and bounded by depth and entry-count limits.
+- Individual documents are limited to 32 MB.
 - Markdown output is sanitized with DOMPurify before insertion.
-- HTML is rendered in a sandboxed frame.
+- HTML runs in a sandboxed opaque-origin frame without `allow-same-origin`.
+- HTML requests use a no-referrer policy.
+- The main Tauri window receives only core defaults and open-dialog permission.
 - Vellum does not modify source files automatically.
 - No AI service, telemetry service, remote content-generation service, or account system is included.
 - Library, recent-history, tab, and preference state are stored locally.
 
-HTML files may contain their own scripts and remote resources. They are rendered as authored inside Vellum's configured sandbox constraints.
+HTML files may contain scripts and remote resources. They run within the configured sandbox and content-security constraints; Vellum does not grant them access to the application origin.
 
 ## Scope boundaries
 
@@ -159,7 +181,7 @@ Not currently in scope:
 - AI-assisted writing or coding
 - Cloud synchronization
 - Collaborative editing
-- Project build tooling
+- Project build tooling for opened HTML projects
 
 These boundaries keep Vellum fast, understandable, and focused on viewing and organizing documents.
 
@@ -167,8 +189,9 @@ These boundaries keep Vellum fast, understandable, and focused on viewing and or
 
 - File watching and automatic reload
 - Correct resolution of relative HTML assets
-- Full Tauri build validation on supported desktop targets
-- Signed release artifacts
+- Committed JavaScript dependency lockfile
+- Native smoke tests on Windows, macOS, and Linux
+- Signed release artifacts and checksums
 - Optional system-tray behavior using the existing Vellum native icon set
 
 ## License
