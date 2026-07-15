@@ -49,28 +49,14 @@
     ],
     "fileAssociations": [
       {
-        "ext": "md",
+        "ext": ["md", "markdown"],
         "name": "Vellum Markdown Document",
         "description": "Markdown document",
         "mimeType": "text/markdown",
         "role": "Viewer"
       },
       {
-        "ext": "markdown",
-        "name": "Vellum Markdown Document",
-        "description": "Markdown document",
-        "mimeType": "text/markdown",
-        "role": "Viewer"
-      },
-      {
-        "ext": "html",
-        "name": "Vellum HTML Document",
-        "description": "HTML document",
-        "mimeType": "text/html",
-        "role": "Viewer"
-      },
-      {
-        "ext": "htm",
+        "ext": ["html", "htm"],
         "name": "Vellum HTML Document",
         "description": "HTML document",
         "mimeType": "text/html",
