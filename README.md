@@ -1,8 +1,12 @@
-# Vellum
+<p align="center">
+  <img src="public/vellum-mark.svg" width="128" height="128" alt="Vellum logo" />
+</p>
 
-Vellum is a focused desktop viewer for Markdown and HTML files.
+<h1 align="center">Vellum</h1>
 
-It provides a persistent local library, recent files, nested folders, carefully typeset Markdown, and full-surface HTML rendering in a compact Tauri application. It does not include AI features, content generation, telemetry, or visual HTML editing.
+<p align="center">A focused desktop viewer for Markdown and HTML files.</p>
+
+Vellum provides a persistent local library, recent files, nested folders, carefully typeset Markdown, and full-surface HTML rendering in a compact Tauri application. It does not include AI features, content generation, telemetry, or visual HTML editing.
 
 ## Design principles
 
@@ -17,6 +21,23 @@ Vellum is intentionally restrained.
 - Grain is applied only to application chrome and never over rendered content.
 - The interface uses a single consistent icon language through Lucide.
 - Accessibility, keyboard flow, reduced-motion support, and visible focus states are treated as core behavior.
+
+## Brand system
+
+The Vellum mark combines a folded page, a quill, and a restrained open circle. The same source asset is used for the title bar, welcome state, browser favicon, repository identity, Windows executable and taskbar icon, macOS application icon, Linux bundle icon, and future tray surfaces.
+
+The canonical source is `public/vellum-mark.svg`. Native assets are generated rather than edited separately, preventing platform icons from drifting away from the application identity.
+
+```bash
+npm run icons
+```
+
+The normal Tauri command runs icon generation automatically before launch or packaging:
+
+```bash
+npm run tauri -- dev
+npm run tauri -- build
+```
 
 ## Current capabilities
 
@@ -38,6 +59,7 @@ Vellum is intentionally restrained.
 - Keyboard shortcuts for common actions
 - Reduced-motion support
 - Automated TypeScript and Vite build validation
+- Unified application, favicon, taskbar, dock, installer, and bundle icon source
 
 ## Interface structure
 
@@ -73,13 +95,13 @@ The renderer always has visual priority. In HTML mode, the document occupies the
 
 ```bash
 npm install
-npm run tauri dev
+npm run tauri -- dev
 ```
 
 ### Build
 
 ```bash
-npm run tauri build
+npm run tauri -- build
 ```
 
 ### Web-only interface development
@@ -99,16 +121,21 @@ GitHub Actions runs the same TypeScript and Vite validation for pushes to `main`
 ## Project structure
 
 ```text
+public/
+  vellum-mark.svg       Canonical vector identity and browser favicon
+scripts/
+  generate-icons.mjs    Reproducible native icon generation
 src/
-  App.tsx          Application state, persistence, shortcuts, settings, and renderers
-  styles.css       Base themes and component styles
-  refinement.css   Typography, spacing, material, and renderer hierarchy
-  final.css        Accessibility, interaction details, grain isolation, and final polish
+  App.tsx               Application state, persistence, shortcuts, settings, and renderers
+  styles.css            Base themes and component styles
+  refinement.css        Typography, spacing, material, and renderer hierarchy
+  final.css             Accessibility, interaction details, branding, grain isolation, and final polish
 src-tauri/
-  src/lib.rs       Constrained local filesystem commands
-  tauri.conf.json  Desktop window, security, and bundle configuration
+  icons/                Generated Windows, macOS, and Linux application icons
+  src/lib.rs            Constrained local filesystem commands
+  tauri.conf.json       Desktop window, security, bundle, and icon configuration
 .github/workflows/
-  validate.yml     Automated TypeScript and Vite build validation
+  validate.yml          Automated TypeScript and Vite build validation
 ```
 
 ## Security model
@@ -140,9 +167,9 @@ These boundaries keep Vellum fast, understandable, and focused on viewing and or
 
 - File watching and automatic reload
 - Correct resolution of relative HTML assets
-- Native application icons and release packaging
 - Full Tauri build validation on supported desktop targets
 - Signed release artifacts
+- Optional system-tray behavior using the existing Vellum native icon set
 
 ## License
 
