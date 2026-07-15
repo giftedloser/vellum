@@ -22,6 +22,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -51,6 +52,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -73,3 +75,32 @@ jobs:
 
       - name: Test Tauri core
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  windows-release:
+    name: Windows release executable
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build Windows release executable
+        run: npm run tauri -- build --no-bundle
