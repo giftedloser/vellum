@@ -62,13 +62,13 @@
 .reset-button:hover { transform: translateY(-1px); }
 
 .window-controls { transform: translateY(-2px); transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease; }
-.main-pane:hover .window-controls,
+.window-controls-hotspot:hover .window-controls,
 .window-controls:hover,
 .window-controls:focus-within { opacity: 1; pointer-events: auto; transform: translateY(0); }
-.viewer-zoom-controls { transform: translate(-50%, 2px); transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease; }
-.main-pane:hover .viewer-zoom-controls,
+.viewer-zoom-controls { transform: translateY(2px); transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease; }
+.viewer-zoom-hotspot:hover .viewer-zoom-controls,
 .viewer-zoom-controls:hover,
-.viewer-zoom-controls:focus-within { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.viewer-zoom-controls:focus-within { opacity: 1; pointer-events: auto; transform: translateY(0); }
 
 .document,
 .html-frame,

@@ -85,9 +85,11 @@ function isSupported(path: string) {
   return allowedExtensions.includes(extension(path));
 }
 
-function prepareHtml(content: string, zoom: number, theme: ResolvedTheme) {
+const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target)return;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY},"*")})})()`;
+
+function prepareHtml(content: string, theme: ResolvedTheme) {
   const thumb = theme === "dark" ? "rgba(220,212,196,.24)" : "rgba(92,78,54,.28)";
-  const viewerStyle = `<style data-vellum-viewer>html{zoom:${zoom / 100}}*{scrollbar-width:none}::-webkit-scrollbar{display:none;width:0;height:0}.vellum-scroll-indicator{position:fixed;z-index:2147483647;width:2px;border-radius:999px;background:${thumb};pointer-events:none;opacity:0;transition:opacity 120ms}</style><script data-vellum-viewer>(()=>{const indicator=document.createElement("i");indicator.className="vellum-scroll-indicator";document.documentElement.append(indicator);let timer;const measure=()=>{const root=document.documentElement,previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure()});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target)return;const viewport=target===document.scrollingElement;const rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect();const height=Math.max(18,rect.height*rect.height/target.scrollHeight);const travel=Math.max(0,rect.height-height);const progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY},"*")})})()</script>`;
+  const viewerStyle = `<style data-vellum-viewer>*{scrollbar-width:none}::-webkit-scrollbar{display:none;width:0;height:0}.vellum-scroll-indicator{position:fixed;z-index:2147483647;width:2px;border-radius:999px;background:${thumb};pointer-events:none;opacity:0;transition:opacity 120ms}</style><script data-vellum-viewer>${viewerScript}</script>`;
   return /<\/head>/i.test(content)
     ? content.replace(/<\/head>/i, `${viewerStyle}</head>`)
     : `${viewerStyle}${content}`;
@@ -168,6 +170,7 @@ function App() {
   const settingsDialog = useRef<HTMLDialogElement>(null);
   const htmlFrame = useRef<HTMLIFrameElement>(null);
   const libraryRestored = useRef(false);
+  const documentRestored = useRef(false);
   const openRequest = useRef(0);
 
   const activePath = activeDocument?.path;
@@ -236,9 +239,11 @@ function App() {
       setRoots(entries.filter((entry): entry is Entry => Boolean(entry)));
       libraryRestored.current = true;
 
-      if (!preferences.rememberDocument) return;
-      const savedDocument = readStored<string | undefined>("vellum.document:v1", readStored<string | undefined>("vellum.activeTab:v1", undefined));
-      if (!cancelled && savedDocument) await openDocument(savedDocument);
+      if (preferences.rememberDocument) {
+        const savedDocument = readStored<string | undefined>("vellum.document:v1", readStored<string | undefined>("vellum.activeTab:v1", undefined));
+        if (!cancelled && savedDocument) await openDocument(savedDocument);
+      }
+      if (!cancelled) documentRestored.current = true;
     };
 
     void restore();
@@ -305,6 +310,7 @@ function App() {
   }, [roots]);
   useEffect(() => localStorage.setItem("vellum.sidebarOpen:v1", JSON.stringify(sidebarOpen)), [sidebarOpen]);
   useEffect(() => {
+    if (!documentRestored.current) return;
     if (preferences.rememberDocument && activePath) localStorage.setItem("vellum.document:v1", JSON.stringify(activePath));
     else localStorage.removeItem("vellum.document:v1");
     localStorage.removeItem("vellum.tabs:v1");
@@ -395,8 +401,13 @@ function App() {
 
   const renderedHtml = useMemo(() => {
     if (!activeDocument || activeDocument.kind !== "html") return "";
-    return prepareHtml(activeDocument.content, preferences.viewerZoom, resolvedTheme);
-  }, [activeDocument, preferences.viewerZoom, resolvedTheme]);
+    return prepareHtml(activeDocument.content, resolvedTheme);
+  }, [activeDocument, resolvedTheme]);
+
+  useEffect(() => {
+    if (!htmlMode) return;
+    htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: preferences.viewerZoom }, "*");
+  }, [htmlMode, preferences.viewerZoom]);
 
   function removeRoot(path: string) {
     setRoots((current) => current.filter((entry) => entry.path !== path));
@@ -486,10 +497,12 @@ function App() {
         </aside>
 
         <section className="main-pane">
-          <div className="window-controls" aria-label="Window controls">
-            <button type="button" onClick={() => appWindow?.minimize()} aria-label="Minimize"><Minus size={13} /></button>
-            <button type="button" onClick={() => appWindow?.toggleMaximize()} aria-label="Maximize or restore"><Maximize2 size={12} /></button>
-            <button type="button" className="close" onClick={() => appWindow?.close()} aria-label="Close"><X size={14} /></button>
+          <div className="window-controls-hotspot">
+            <div className="window-controls" aria-label="Window controls">
+              <button type="button" onClick={() => appWindow?.minimize()} aria-label="Minimize"><Minus size={13} /></button>
+              <button type="button" onClick={() => appWindow?.toggleMaximize()} aria-label="Maximize or restore"><Maximize2 size={12} /></button>
+              <button type="button" className="close" onClick={() => appWindow?.close()} aria-label="Close"><X size={14} /></button>
+            </div>
           </div>
           <div className="content-area">
             {error ? <div className="error-banner" role="alert"><span>{error}</span><button type="button" onClick={() => setError(undefined)} aria-label="Dismiss error"><X size={14} /></button></div> : null}
@@ -514,14 +527,20 @@ function App() {
                 srcDoc={renderedHtml}
                 sandbox="allow-forms allow-modals allow-popups allow-scripts"
                 referrerPolicy="no-referrer"
+                onLoad={() => {
+                  htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: preferences.viewerZoom }, "*");
+                  htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-measure" }, "*");
+                }}
               />
             )}
           </div>
-          <div className="viewer-zoom-controls" aria-label="Viewer zoom controls">
-            <button type="button" disabled={!activeDocument} onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Math.max(50, current.viewerZoom - 10) })); }} title="Zoom out" aria-label="Zoom out"><ZoomOut size={15} /></button>
-            <button type="button" className="zoom-value" disabled={!activeDocument} onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: 100 })); }} title="Reset viewer zoom" aria-label={`Reset viewer zoom, currently ${preferences.viewerZoom}%`}>{preferences.viewerZoom}%</button>
-            <button type="button" className={fitToWidth ? "active" : ""} disabled={!activeDocument} onClick={fitViewer} title="Fit to width" aria-label="Fit document to width"><Scan size={15} /></button>
-            <button type="button" disabled={!activeDocument} onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Math.min(200, current.viewerZoom + 10) })); }} title="Zoom in" aria-label="Zoom in"><ZoomIn size={15} /></button>
+          <div className="viewer-zoom-hotspot">
+            <div className="viewer-zoom-controls" aria-label="Viewer zoom controls">
+              <button type="button" disabled={!activeDocument} onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Math.max(50, current.viewerZoom - 10) })); }} title="Zoom out" aria-label="Zoom out"><ZoomOut size={15} /></button>
+              <button type="button" className="zoom-value" disabled={!activeDocument} onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: 100 })); }} title="Reset viewer zoom" aria-label={`Reset viewer zoom, currently ${preferences.viewerZoom}%`}>{preferences.viewerZoom}%</button>
+              <button type="button" className={fitToWidth ? "active" : ""} disabled={!activeDocument} onClick={fitViewer} title="Fit to width" aria-label="Fit document to width"><Scan size={15} /></button>
+              <button type="button" disabled={!activeDocument} onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Math.min(200, current.viewerZoom + 10) })); }} title="Zoom in" aria-label="Zoom in"><ZoomIn size={15} /></button>
+            </div>
           </div>
         </section>
       </section>
