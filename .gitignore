@@ -1,0 +1,26 @@
+# JavaScript
+node_modules/
+dist/
+.vite/
+*.log
+
+# Rust and Tauri
+src-tauri/target/
+target/
+src-tauri/gen/
+
+# Generated native icons
+src-tauri/icons/
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local environment
+.env
+.env.*
+!.env.example
