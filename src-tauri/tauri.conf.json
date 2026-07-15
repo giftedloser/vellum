@@ -7,7 +7,8 @@
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "frontendDist": "../dist",
+    "removeUnusedCommands": true
   },
   "app": {
     "windows": [
@@ -22,16 +23,23 @@
         "shadow": false,
         "resizable": true,
         "center": true,
-        "devtools": false
+        "devtools": false,
+        "browserExtensionsEnabled": false,
+        "generalAutofillEnabled": false,
+        "zoomHotkeysEnabled": false
       }
     ],
     "security": {
+      "freezePrototype": true,
       "csp": "default-src 'self' data: blob: asset: http: https:; base-uri *; object-src 'none'; img-src 'self' data: blob: asset: file: http: https:; media-src 'self' data: blob: asset: file: http: https:; font-src 'self' data: blob: asset: http: https:; style-src 'self' 'unsafe-inline' data: blob: asset: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: asset: http: https:; connect-src 'self' data: blob: asset: http: https: ws: wss:; worker-src 'self' data: blob:; frame-src 'self' data: blob: asset: file: http: https:"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "Utility",
+    "shortDescription": "A focused Markdown and HTML document viewer.",
+    "longDescription": "Vellum is a local desktop viewer for Markdown and HTML documents with a persistent library, restrained interface, and sandboxed rendering.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -41,14 +49,28 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["md", "markdown"],
+        "ext": "md",
         "name": "Vellum Markdown Document",
         "description": "Markdown document",
         "mimeType": "text/markdown",
         "role": "Viewer"
       },
       {
-        "ext": ["html", "htm"],
+        "ext": "markdown",
+        "name": "Vellum Markdown Document",
+        "description": "Markdown document",
+        "mimeType": "text/markdown",
+        "role": "Viewer"
+      },
+      {
+        "ext": "html",
+        "name": "Vellum HTML Document",
+        "description": "HTML document",
+        "mimeType": "text/html",
+        "role": "Viewer"
+      },
+      {
+        "ext": "htm",
         "name": "Vellum HTML Document",
         "description": "HTML document",
         "mimeType": "text/html",
