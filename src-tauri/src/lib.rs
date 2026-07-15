@@ -36,9 +36,8 @@ fn supported(path: &Path) -> bool {
 
 fn display_name(path: &Path) -> String {
     path.file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or_else(|| path.to_string_lossy().as_ref())
-        .to_string()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
 
 fn scan_canonical(
@@ -65,7 +64,7 @@ fn scan_canonical(
         }
         return Ok(Entry {
             name: display_name(canonical),
-            path: canonical.to_string_lossy().to_string(),
+            path: canonical.to_string_lossy().into_owned(),
             kind: "file",
             children: None,
         });
@@ -101,7 +100,7 @@ fn scan_canonical(
 
     Ok(Entry {
         name: display_name(canonical),
-        path: canonical.to_string_lossy().to_string(),
+        path: canonical.to_string_lossy().into_owned(),
         kind: "directory",
         children: Some(children),
     })
