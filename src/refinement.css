@@ -1,0 +1,372 @@
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-sm: 7px;
+  --radius-md: 10px;
+  --radius-lg: 15px;
+  --motion-fast: 120ms;
+  --motion-standard: 180ms;
+}
+
+body {
+  padding: 7px;
+}
+
+.app-shell {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--radius-lg);
+}
+
+.app-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: .12;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.22' numOctaves='2' seed='9' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='discrete' tableValues='.2 .35 .5 .65 .8'/%3E%3CfeFuncG type='discrete' tableValues='.2 .35 .5 .65 .8'/%3E%3CfeFuncB type='discrete' tableValues='.2 .35 .5 .65 .8'/%3E%3CfeFuncA type='table' tableValues='0 .08'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.85'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+}
+
+:root[data-theme="dark"] .app-shell::after {
+  opacity: .085;
+  mix-blend-mode: screen;
+}
+
+button,
+select,
+input {
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    opacity var(--motion-fast) ease,
+    transform var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(.5px);
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.titlebar {
+  height: 44px;
+}
+
+.brand {
+  gap: 10px;
+  padding-left: 15px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: -.005em;
+}
+
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.window-controls button {
+  width: 45px;
+}
+
+.workspace {
+  height: calc(100% - 44px);
+  grid-template-columns: 272px minmax(0, 1fr);
+}
+
+.sidebar {
+  background: rgba(var(--panel-rgb), calc(var(--sidebar-opacity) * .94));
+  backdrop-filter: blur(22px) saturate(118%);
+}
+
+.sidebar-heading {
+  height: 48px;
+  padding: 0 11px 0 16px;
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: .105em;
+}
+
+.section-label {
+  height: 32px;
+  padding: 0 15px;
+  gap: 7px;
+  font-size: 9px;
+  font-weight: 720;
+  letter-spacing: .105em;
+}
+
+.recent-list,
+.tree {
+  padding-left: 9px;
+  padding-right: 9px;
+}
+
+.recent-item,
+.tree-row {
+  min-height: 31px;
+  border-radius: var(--radius-sm);
+}
+
+.recent-item,
+.tree-label,
+.tab span {
+  font-size: 12px;
+  letter-spacing: -.006em;
+}
+
+.tree-row-wrap {
+  border-radius: var(--radius-sm);
+}
+
+.tree-row-wrap:hover,
+.recent-item:hover {
+  background: color-mix(in srgb, var(--hover) 88%, transparent);
+}
+
+.tree-row-wrap.active,
+.recent-item.active {
+  background: var(--active);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.icon-folder,
+.icon-html,
+.icon-markdown {
+  stroke-width: 1.8;
+}
+
+.sidebar-footer {
+  height: 44px;
+  padding: 0 9px 0 15px;
+  font-size: 9px;
+  letter-spacing: .055em;
+}
+
+.main-pane {
+  position: relative;
+}
+
+.toolbar {
+  height: 45px;
+  gap: 7px;
+  padding: 0 9px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: blur(18px) saturate(112%);
+}
+
+.tabs {
+  gap: 2px;
+}
+
+.tab {
+  height: 30px;
+  max-width: 228px;
+  padding: 0 9px !important;
+  border-radius: 8px !important;
+}
+
+.tab:hover {
+  background: var(--hover) !important;
+  color: var(--text) !important;
+}
+
+.tab.active {
+  background: var(--surface-strong) !important;
+  box-shadow: 0 1px 2px rgba(28, 24, 18, .05), inset 0 0 0 1px var(--border);
+}
+
+.content-area {
+  background: var(--surface);
+}
+
+.document {
+  width: min(var(--reading-width), calc(100% - 72px));
+  padding: 72px 0 128px;
+}
+
+.markdown-body {
+  font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: calc(18px * var(--font-scale));
+  line-height: 1.74;
+  color: var(--text);
+}
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", sans-serif;
+  font-weight: 650;
+  letter-spacing: -.035em;
+  text-wrap: balance;
+}
+
+.markdown-body h1 {
+  font-size: 2.25em;
+  line-height: 1.08;
+  margin-bottom: .72em;
+}
+
+.markdown-body h2 {
+  font-size: 1.52em;
+  line-height: 1.15;
+  margin-top: 2.1em;
+}
+
+.markdown-body h3 {
+  font-size: 1.16em;
+  line-height: 1.25;
+  margin-top: 1.8em;
+}
+
+.markdown-body p,
+.markdown-body li {
+  color: color-mix(in srgb, var(--text) 92%, var(--muted));
+}
+
+.markdown-body strong {
+  color: var(--text);
+  font-weight: 680;
+}
+
+.markdown-body a {
+  text-decoration-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  text-underline-offset: .16em;
+}
+
+.markdown-body a:hover {
+  text-decoration-color: var(--accent);
+}
+
+.markdown-body pre {
+  border-radius: 12px;
+  padding: 20px;
+  line-height: 1.55;
+}
+
+.markdown-body img {
+  border-radius: 12px;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+/* HTML owns the entire browser surface. Chrome becomes a quiet overlay. */
+.main-pane:has(.html-frame) .toolbar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 20;
+  border-bottom: 0;
+  opacity: .18;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--surface) 72%, transparent), transparent);
+  backdrop-filter: none;
+}
+
+.main-pane:has(.html-frame) .toolbar:hover,
+.main-pane:has(.html-frame) .toolbar:focus-within {
+  opacity: 1;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(18px) saturate(112%);
+  border-bottom: 1px solid var(--border);
+}
+
+.main-pane:has(.html-frame) .content-area {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: white;
+}
+
+.html-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  display: block;
+  background: white;
+}
+
+.welcome {
+  padding: 40px;
+}
+
+.welcome-mark {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(48, 40, 28, .08);
+}
+
+.welcome h1 {
+  font-family: ui-serif, "Iowan Old Style", Georgia, serif;
+  font-weight: 520;
+  letter-spacing: -.035em;
+}
+
+.welcome-actions button,
+.empty-sidebar button,
+.danger-button,
+.setting-row select {
+  border-radius: 9px;
+}
+
+.modal-backdrop {
+  background: rgba(18, 16, 12, .24);
+  backdrop-filter: blur(7px);
+}
+
+.settings-panel {
+  width: min(600px, calc(100% - 44px));
+  border-radius: 17px;
+  padding: 7px 23px 12px;
+}
+
+.settings-panel h2 {
+  font-family: ui-serif, "Iowan Old Style", Georgia, serif;
+  font-size: 25px;
+  letter-spacing: -.025em;
+}
+
+.setting-row {
+  min-height: 80px;
+  gap: 32px;
+}
+
+.setting-row strong {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -.008em;
+}
+
+.setting-row span {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  body { padding: 0; }
+  .app-shell { border-radius: 0; }
+  .workspace { grid-template-columns: 228px minmax(0, 1fr); }
+  .document { width: calc(100% - 40px); padding-top: 44px; }
+}
