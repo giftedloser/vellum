@@ -31,6 +31,38 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 128 128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.18' numOctaves='2' seed='12' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='discrete' tableValues='.45 .6 .75 .9'/%3E%3CfeFuncG type='discrete' tableValues='.45 .6 .75 .9'/%3E%3CfeFuncB type='discrete' tableValues='.45 .6 .75 .9'/%3E%3CfeFuncA type='table' tableValues='0 .025'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* One mark everywhere: title bar, welcome state, favicon, README, and native bundles. */
+.brand-mark,
+.welcome-mark {
+  overflow: hidden;
+  color: transparent !important;
+  background-color: transparent !important;
+  background-image: url("/vellum-mark.svg") !important;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  box-shadow: none;
+}
+
+.brand-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+
+.welcome-mark {
+  width: 76px;
+  height: 76px;
+  margin-bottom: 20px;
+  border-radius: 18px;
+  filter: drop-shadow(0 10px 24px rgba(35, 29, 20, .12));
+}
+
+:root[data-theme="dark"] .brand-mark,
+:root[data-theme="dark"] .welcome-mark {
+  filter: brightness(.94) contrast(1.04);
+}
+
 .workspace.sidebar-collapsed .sidebar {
   visibility: hidden;
   pointer-events: none;
@@ -216,6 +248,7 @@
   border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
   background: var(--accent);
 }
+
 .switch input:checked + span::after { transform: translateX(16px); }
 .switch input:focus-visible + span { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent); }
 
