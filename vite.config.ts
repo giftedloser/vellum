@@ -1,7 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-declare const process: { env: Record<string, string | undefined> };
+const runtime = globalThis as typeof globalThis & {
+  process?: { env?: Record<string, string | undefined> };
+};
 
 export default defineConfig({
   plugins: [react()],
@@ -12,5 +14,5 @@ export default defineConfig({
     watch: { ignored: ["**/src-tauri/**"] },
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
-  build: { target: process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13" },
+  build: { target: runtime.process?.env?.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13" },
 });
