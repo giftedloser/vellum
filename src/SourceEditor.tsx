@@ -1,4 +1,13 @@
-import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { html } from "@codemirror/lang-html";
+import { markdown } from "@codemirror/lang-markdown";
+import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
+import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { Compartment, EditorState } from "@codemirror/state";
+import { drawSelection, dropCursor, EditorView, keymap } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 
 type Props = {
   value: string;
@@ -9,132 +18,211 @@ type Props = {
   onChange: (value: string) => void;
 };
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+function resolvedDarkTheme() {
+  return document.documentElement.dataset.theme === "dark";
 }
 
-function highlightMarkdown(value: string) {
-  return escapeHtml(value)
-    .replace(/(^|\n)(#{1,6})([^\n]*)/g, '$1<span class="tok-heading">$2$3</span>')
-    .replace(/(```[\s\S]*?```|`[^`\n]+`)/g, '<span class="tok-code">$1</span>')
-    .replace(/(\*\*[^*\n]+\*\*|__[^_\n]+__)/g, '<span class="tok-strong">$1</span>')
-    .replace(/(\[[^\]\n]+\]\([^\)\n]+\))/g, '<span class="tok-link">$1</span>')
-    .replace(/(^|\n)(\s*(?:[-*+] |\d+\. ))/g, '$1<span class="tok-marker">$2</span>')
-    .replace(/(^|\n)(\s*&gt;[^\n]*)/g, '$1<span class="tok-quote">$2</span>');
+function languageExtension(language: Props["language"]) {
+  return language === "html" ? html({ autoCloseTags: false }) : markdown();
 }
 
-function highlightHtml(value: string) {
-  return escapeHtml(value)
-    .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="tok-comment">$1</span>')
-    .replace(/(&lt;\/?)([A-Za-z][\w:-]*)([^&]*?)(&gt;)/g, (_match, open, tag, rest, close) => {
-      const attributes = String(rest).replace(/([\w:-]+)(\s*=\s*)("[^"]*"|'[^']*')/g, '<span class="tok-attr">$1</span>$2<span class="tok-string">$3</span>');
-      return `${open}<span class="tok-tag">${tag}</span>${attributes}${close}`;
-    });
+function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
+  const palette = dark
+    ? {
+        foreground: "#d8d1c5",
+        muted: "#8f9a86",
+        heading: "#d3a36d",
+        keyword: "#dda097",
+        attribute: "#d0b272",
+        string: "#9bc39f",
+        link: "#82b4d0",
+        code: "#c1a4df",
+        selection: "rgba(211, 163, 109, .22)",
+        active: "rgba(255, 255, 255, .025)",
+      }
+    : {
+        foreground: "#342f29",
+        muted: "#78806f",
+        heading: "#9c6b38",
+        keyword: "#8b4f45",
+        attribute: "#8a6b32",
+        string: "#4f7556",
+        link: "#3d6f8f",
+        code: "#7b5f9e",
+        selection: "rgba(156, 107, 56, .18)",
+        active: "rgba(52, 47, 41, .025)",
+      };
+
+  return [
+    EditorView.theme({
+      "&": {
+        height: "100%",
+        color: palette.foreground,
+        backgroundColor: "transparent",
+        fontFamily,
+        fontSize: `${fontSize}px`,
+      },
+      ".cm-scroller": {
+        overflow: "auto",
+        fontFamily,
+        lineHeight: "1.62",
+        scrollbarWidth: "none",
+      },
+      ".cm-scroller::-webkit-scrollbar": { display: "none" },
+      ".cm-content": {
+        minHeight: "100%",
+        padding: "74px 30px 42px",
+        caretColor: palette.foreground,
+      },
+      ".cm-line": { padding: "0" },
+      ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
+        backgroundColor: `${palette.selection} !important`,
+      },
+      ".cm-cursor, .cm-dropCursor": { borderLeftColor: palette.foreground },
+      ".cm-activeLine": { backgroundColor: palette.active },
+      ".cm-panels": {
+        color: "var(--vellum-control-fg)",
+        backgroundColor: "var(--vellum-control-bg-hover)",
+        border: "1px solid var(--vellum-control-border)",
+        boxShadow: "var(--vellum-control-shadow)",
+        backdropFilter: "blur(14px) saturate(120%)",
+      },
+      ".cm-panels.cm-panels-top": {
+        top: "58px",
+        right: "24px",
+        left: "auto",
+        width: "auto",
+        borderRadius: "10px",
+      },
+      ".cm-search": { padding: "5px" },
+      ".cm-search input": {
+        height: "28px",
+        border: "0",
+        borderRadius: "6px",
+        padding: "0 8px",
+        color: "inherit",
+        backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
+        outline: "none",
+      },
+      ".cm-search button": {
+        height: "28px",
+        border: "0",
+        borderRadius: "6px",
+        color: "inherit",
+        backgroundColor: "transparent",
+      },
+      ".cm-search button:hover": {
+        backgroundColor: "color-mix(in srgb, currentColor 10%, transparent)",
+      },
+      ".cm-tooltip": {
+        color: "var(--vellum-control-fg)",
+        backgroundColor: "var(--vellum-control-bg-hover)",
+        border: "1px solid var(--vellum-control-border)",
+        borderRadius: "8px",
+        boxShadow: "var(--vellum-control-shadow)",
+      },
+      "&.cm-focused": { outline: "none" },
+    }, { dark }),
+    syntaxHighlighting(HighlightStyle.define([
+      { tag: tags.heading, color: palette.heading, fontWeight: "650" },
+      { tag: [tags.keyword, tags.tagName], color: palette.keyword },
+      { tag: [tags.attributeName, tags.propertyName], color: palette.attribute },
+      { tag: [tags.string, tags.url], color: palette.string },
+      { tag: [tags.link, tags.processingInstruction], color: palette.link },
+      { tag: [tags.monospace, tags.regexp], color: palette.code },
+      { tag: [tags.comment, tags.quote], color: palette.muted, fontStyle: "italic" },
+      { tag: [tags.strong, tags.emphasis], fontWeight: "650" },
+      { tag: tags.invalid, textDecoration: "underline wavy" },
+    ])),
+  ];
 }
 
 export default function SourceEditor({ value, language, wrap, fontSize, fontFamily, onChange }: Props) {
-  const textarea = useRef<HTMLTextAreaElement>(null);
-  const highlight = useRef<HTMLPreElement>(null);
-  const [query, setQuery] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
+  const host = useRef<HTMLDivElement>(null);
+  const view = useRef<EditorView>();
+  const onChangeRef = useRef(onChange);
+  const applyingExternal = useRef(false);
+  const languageConfig = useRef(new Compartment()).current;
+  const wrapConfig = useRef(new Compartment()).current;
+  const themeConfig = useRef(new Compartment()).current;
+  const dark = useRef(resolvedDarkTheme());
 
-  const highlighted = useMemo(
-    () => language === "html" ? highlightHtml(value) : highlightMarkdown(value),
-    [language, value],
-  );
+  onChangeRef.current = onChange;
 
-  const syncScroll = () => {
-    if (!textarea.current || !highlight.current) return;
-    highlight.current.scrollTop = textarea.current.scrollTop;
-    highlight.current.scrollLeft = textarea.current.scrollLeft;
-  };
+  useEffect(() => {
+    if (!host.current) return;
 
-  const findNext = () => {
-    const input = textarea.current;
-    if (!input || !query) return;
-    const haystack = value.toLocaleLowerCase();
-    const needle = query.toLocaleLowerCase();
-    let index = haystack.indexOf(needle, Math.max(input.selectionEnd, 0));
-    if (index < 0) index = haystack.indexOf(needle);
-    if (index < 0) return;
-    input.focus();
-    input.setSelectionRange(index, index + query.length);
-  };
-
-  const applyEdit = (next: string, selectionStart: number, selectionEnd = selectionStart) => {
-    onChange(next);
-    requestAnimationFrame(() => {
-      textarea.current?.focus();
-      textarea.current?.setSelectionRange(selectionStart, selectionEnd);
+    const state = EditorState.create({
+      doc: value,
+      extensions: [
+        history(),
+        drawSelection(),
+        dropCursor(),
+        indentOnInput(),
+        bracketMatching(),
+        closeBrackets(),
+        highlightSelectionMatches(),
+        languageConfig.of(languageExtension(language)),
+        wrapConfig.of(wrap ? EditorView.lineWrapping : []),
+        themeConfig.of(visualTheme(dark.current, fontSize, fontFamily)),
+        keymap.of([
+          ...closeBracketsKeymap,
+          ...searchKeymap,
+          ...historyKeymap,
+          ...defaultKeymap,
+          indentWithTab,
+        ]),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged && !applyingExternal.current) {
+            onChangeRef.current(update.state.doc.toString());
+          }
+        }),
+      ],
     });
-  };
 
-  const onEditorKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    const modifier = event.ctrlKey || event.metaKey;
-    if (modifier && event.key.toLowerCase() === "f") {
-      event.preventDefault();
-      setSearchOpen(true);
-      return;
-    }
-    if (event.key === "Escape" && searchOpen) {
-      event.preventDefault();
-      setSearchOpen(false);
-      textarea.current?.focus();
-      return;
-    }
+    view.current = new EditorView({ state, parent: host.current });
+    view.current.focus();
 
-    const input = event.currentTarget;
-    const start = input.selectionStart;
-    const end = input.selectionEnd;
+    return () => {
+      view.current?.destroy();
+      view.current = undefined;
+    };
+  }, []);
 
-    if (event.key === "Tab") {
-      event.preventDefault();
-      const replacement = "  ";
-      applyEdit(`${value.slice(0, start)}${replacement}${value.slice(end)}`, start + replacement.length);
-      return;
-    }
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor || editor.state.doc.toString() === value) return;
+    applyingExternal.current = true;
+    editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: value } });
+    applyingExternal.current = false;
+  }, [value]);
 
-    const pairs: Record<string, string> = { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'", "`": "`" };
-    const closing = pairs[event.key];
-    if (!closing || modifier || event.altKey) return;
+  useEffect(() => {
+    view.current?.dispatch({ effects: languageConfig.reconfigure(languageExtension(language)) });
+  }, [language, languageConfig]);
 
-    event.preventDefault();
-    const selected = value.slice(start, end);
-    const insertion = `${event.key}${selected}${closing}`;
-    const next = `${value.slice(0, start)}${insertion}${value.slice(end)}`;
-    if (selected) applyEdit(next, start + 1, end + 1);
-    else applyEdit(next, start + 1);
-  };
+  useEffect(() => {
+    view.current?.dispatch({ effects: wrapConfig.reconfigure(wrap ? EditorView.lineWrapping : []) });
+  }, [wrap, wrapConfig]);
+
+  useEffect(() => {
+    const applyTheme = () => {
+      const nextDark = resolvedDarkTheme();
+      dark.current = nextDark;
+      view.current?.dispatch({ effects: themeConfig.reconfigure(visualTheme(nextDark, fontSize, fontFamily)) });
+    };
+    applyTheme();
+    const observer = new MutationObserver(applyTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, [fontFamily, fontSize, themeConfig]);
 
   return (
     <div
-      className={`source-editor ${wrap ? "wrap" : "nowrap"}`}
+      ref={host}
+      className="source-editor"
       style={{ "--editor-font-size": `${fontSize}px`, "--editor-font-family": fontFamily } as CSSProperties}
-    >
-      {searchOpen ? (
-        <div className="editor-search" role="search">
-          <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") findNext(); if (event.key === "Escape") { setSearchOpen(false); textarea.current?.focus(); } }} aria-label="Find in document" placeholder="Find" />
-          <button type="button" onClick={findNext}>Next</button>
-          <button type="button" onClick={() => { setSearchOpen(false); textarea.current?.focus(); }} aria-label="Close search">×</button>
-        </div>
-      ) : null}
-      <pre ref={highlight} className="editor-highlight" aria-hidden="true" dangerouslySetInnerHTML={{ __html: `${highlighted}\n` }} />
-      <textarea
-        ref={textarea}
-        className="editor-input"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={onEditorKeyDown}
-        onScroll={syncScroll}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        wrap={wrap ? "soft" : "off"}
-        aria-label={`${language === "html" ? "HTML" : "Markdown"} source editor`}
-      />
-    </div>
+      aria-label={`${language === "html" ? "HTML" : "Markdown"} source editor`}
+    />
   );
 }
