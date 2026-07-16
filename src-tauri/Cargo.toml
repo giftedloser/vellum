@@ -4,6 +4,8 @@ version = "0.2.0"
 description = "A focused Markdown and HTML document viewer"
 authors = ["Marshall Jarvis"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/giftedloser/vellum"
 
 [lib]
 name = "vellum_lib"

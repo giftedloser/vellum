@@ -10,6 +10,8 @@ Vellum provides a recent-first local sidebar, carefully typeset Markdown, full-s
 
 The repository audit is documented in [`AUDIT.md`](AUDIT.md). The release-candidate pass is documented in [`RELEASE_AUDIT.md`](RELEASE_AUDIT.md).
 
+Download the current Windows installers from [GitHub Releases](https://github.com/giftedloser/vellum/releases/latest).
+
 ## Design principles
 
 Vellum is intentionally restrained.
@@ -142,6 +144,10 @@ Windows does not permit an installer to silently take over a user's defaults. Af
 | Open settings | `Ctrl+,` | `Cmd+,` |
 | Close settings, menus, or editor search | `Escape` | `Escape` |
 
+## Configuration
+
+Vellum has no required environment variables or external services. Appearance, reading, editor, sidebar-motion, control-visibility, and session-restoration preferences are managed in Settings and stored locally on the device.
+
 ## Development
 
 ### Requirements
@@ -163,7 +169,7 @@ npm run tauri -- dev
 npm run tauri -- build
 ```
 
-### Validate locally
+### Testing and validation
 
 ```bash
 npm run build
@@ -229,16 +235,14 @@ HTML files may contain scripts and remote resources. They run within the configu
 
 The CodeMirror editor and language modules are lazy-loaded only when Edit mode is first opened. Normal viewer startup does not request or instantiate the editor chunk. CodeMirror compartments update wrapping, language, theme, font, and size without remounting the editor, and Markdown block decoration is limited to visible lines. Scroll-indicator geometry work is requestAnimationFrame-throttled, native interface zoom is updated only when interface scale changes, directory scans are bounded, and the Rust release profile uses whole-program link-time optimization, one code-generation unit, size-oriented optimization, stripped symbols, and abort-on-panic behavior.
 
-## Remaining release work
+## Distribution notes
 
-- Select and add a license before public distribution
-- Sign Windows installers and publish checksums
-- Smoke-test MSI and NSIS installation, upgrade, uninstall, file associations, Save, and Save As behavior
-- Test complex third-party HTML and relative local assets
-- Add release provenance when distribution begins
+- Windows MSI and NSIS installers are published with SHA-256 checksums on GitHub Releases.
+- The current installers are unsigned, so Windows may show a SmartScreen warning.
+- HTML compatibility depends on the document's own remote resources and browser assumptions.
 
 ## License
 
-No license has been selected yet.
+Vellum is available under the [MIT License](LICENSE).
 
 The bundled Style Script font is licensed separately under the SIL Open Font License 1.1; see [`public/fonts/OFL.txt`](public/fonts/OFL.txt).

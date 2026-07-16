@@ -5,6 +5,9 @@ dist/
 *.log
 *.tsbuildinfo
 .playwright-cli/
+.agents/
+.codex/
+coverage/
 
 # Rust and Tauri
 src-tauri/target/
@@ -16,6 +19,7 @@ src-tauri/icons/
 
 # Local logo source pack (required masters are copied into public/)
 vellum-logo-icon-pack/
+vellum-icon-pack/
 
 # Editors and operating systems
 .DS_Store

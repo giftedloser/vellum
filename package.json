@@ -2,6 +2,19 @@
   "name": "vellum",
   "private": true,
   "version": "0.2.0",
+  "description": "A focused desktop viewer and lightweight source editor for Markdown and HTML files.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/giftedloser/vellum.git"
+  },
+  "homepage": "https://github.com/giftedloser/vellum#readme",
+  "bugs": {
+    "url": "https://github.com/giftedloser/vellum/issues"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
