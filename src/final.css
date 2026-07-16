@@ -2,9 +2,17 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
+  --paper-wash: rgba(133, 109, 69, .022);
+  --paper-vignette: rgba(95, 76, 45, .032);
+  --paper-blend: multiply;
 }
 
-:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper-wash: rgba(219, 194, 149, .018);
+  --paper-vignette: rgba(0, 0, 0, .12);
+  --paper-blend: soft-light;
+}
 
 ::selection {
   color: var(--text);
@@ -13,17 +21,21 @@
 
 .sidebar,
 .settings-panel,
-.main-pane:not(.html-mode),
-.main-pane:not(.html-mode) .content-area,
-.main-pane:not(.html-mode) .welcome,
-.main-pane:not(.html-mode) .document {
-  background-image: url("/textures/grain.png");
-  background-repeat: repeat;
-  background-size: 1024px 1024px;
+.main-pane,
+.content-area,
+.welcome,
+.document {
+  background-image:
+    radial-gradient(ellipse at 50% 0%, transparent 35%, var(--paper-vignette) 100%),
+    linear-gradient(var(--paper-wash), var(--paper-wash)),
+    url("/textures/grain.png");
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-size: 100% 100%, 100% 100%, 1024px 1024px;
+  background-blend-mode: normal, normal, var(--paper-blend);
 }
 
-.main-pane:not(.html-mode),
-.main-pane:not(.html-mode) .content-area {
+.main-pane,
+.content-area {
   background-color: var(--surface);
 }
 
@@ -176,7 +188,8 @@
 .markdown-body th { font-weight: 650; background: color-mix(in srgb, var(--panel-rgb) 12%, transparent); }
 .markdown-body :not(pre) > code { white-space: break-spaces; }
 
-.html-mode .content-area {
+/* Only authored HTML viewing gets a neutral canvas. The source editor keeps Vellum's themed paper surface. */
+.html-mode .content-area:has(.html-frame) {
   position: absolute;
   inset: 0;
   overflow: hidden;
