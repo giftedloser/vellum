@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 type Props = {
   value: string;
@@ -16,23 +16,64 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;");
 }
 
+function withProtectedSegments(value: string, transform: (protect: (segment: string) => string) => string) {
+  const protectedSegments: string[] = [];
+  const protect = (segment: string) => {
+    const index = protectedSegments.push(segment) - 1;
+    return `\uE000${index}\uE001`;
+  };
+  let output = transform(protect);
+  output = output.replace(/\uE000(\d+)\uE001/g, (_match, index) => protectedSegments[Number(index)] ?? "");
+  return output;
+}
+
 function highlightMarkdown(value: string) {
-  return escapeHtml(value)
-    .replace(/(^|\n)(#{1,6})([^\n]*)/g, '$1<span class="tok-heading">$2$3</span>')
-    .replace(/(```[\s\S]*?```|`[^`\n]+`)/g, '<span class="tok-code">$1</span>')
-    .replace(/(\*\*[^*\n]+\*\*|__[^_\n]+__)/g, '<span class="tok-strong">$1</span>')
-    .replace(/(\[[^\]\n]+\]\([^\)\n]+\))/g, '<span class="tok-link">$1</span>')
-    .replace(/(^|\n)(\s*(?:[-*+] |\d+\. ))/g, '$1<span class="tok-marker">$2</span>')
-    .replace(/(^|\n)(\s*&gt;[^\n]*)/g, '$1<span class="tok-quote">$2</span>');
+  const escaped = escapeHtml(value);
+  return withProtectedSegments(escaped, (protect) => {
+    let output = escaped.replace(/```[\s\S]*?```|`[^`\n]+`/g, (segment) => protect(`<span class="tok-code">${segment}</span>`));
+    output = output.replace(/\[[^\]\n]+\]\([^\)\n]+\)/g, (segment) => protect(`<span class="tok-link">${segment}</span>`));
+    return output
+      .replace(/(^|\n)(#{1,6})([^\n]*)/g, '$1<span class="tok-heading">$2$3</span>')
+      .replace(/(\*\*[^*\n]+\*\*|__[^_\n]+__)/g, '<span class="tok-strong">$1</span>')
+      .replace(/(^|\n)(\s*(?:[-*+] |\d+\. ))/g, '$1<span class="tok-marker">$2</span>')
+      .replace(/(^|\n)(\s*&gt;[^\n]*)/g, '$1<span class="tok-quote">$2</span>');
+  });
+}
+
+function highlightTag(segment: string) {
+  return segment.replace(/(&lt;\/?)([A-Za-z][\w:-]*)([\s\S]*?)(&gt;)/, (_match, open, tag, rest, close) => {
+    const attributes = String(rest).replace(
+      /([\w:-]+)(\s*=\s*)("[^"]*"|'[^']*')/g,
+      '<span class="tok-attr">$1</span>$2<span class="tok-string">$3</span>',
+    );
+    return `${open}<span class="tok-tag">${tag}</span>${attributes}${close}`;
+  });
+}
+
+function highlightCss(value: string) {
+  return value
+    .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="tok-comment">$1</span>')
+    .replace(/("[^"]*"|'[^']*')/g, '<span class="tok-string">$1</span>')
+    .replace(/([\w-]+)(\s*:)/g, '<span class="tok-css-property">$1</span>$2')
+    .replace(/\b(\d+(?:\.\d+)?(?:px|rem|em|vh|vw|%|s|ms|deg)?)\b/g, '<span class="tok-number">$1</span>');
+}
+
+function highlightJavaScript(value: string) {
+  return value
+    .replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g, '<span class="tok-comment">$1</span>')
+    .replace(/(`(?:\\.|[^`])*`|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')/g, '<span class="tok-string">$1</span>')
+    .replace(/\b(const|let|var|function|return|if|else|for|while|switch|case|break|continue|class|new|import|export|from|async|await|try|catch|throw|true|false|null|undefined)\b/g, '<span class="tok-keyword">$1</span>')
+    .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-number">$1</span>');
 }
 
 function highlightHtml(value: string) {
-  return escapeHtml(value)
-    .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="tok-comment">$1</span>')
-    .replace(/(&lt;\/?)([A-Za-z][\w:-]*)([^&]*?)(&gt;)/g, (_match, open, tag, rest, close) => {
-      const attributes = String(rest).replace(/([\w:-]+)(\s*=\s*)("[^"]*"|'[^']*')/g, '<span class="tok-attr">$1</span>$2<span class="tok-string">$3</span>');
-      return `${open}<span class="tok-tag">${tag}</span>${attributes}${close}`;
-    });
+  const escaped = escapeHtml(value);
+  return withProtectedSegments(escaped, (protect) => {
+    let output = escaped.replace(/&lt;!--[\s\S]*?--&gt;/g, (segment) => protect(`<span class="tok-comment">${segment}</span>`));
+    output = output.replace(/(&lt;style\b[\s\S]*?&gt;)([\s\S]*?)(&lt;\/style&gt;)/gi, (_match, open, body, close) => protect(`${highlightTag(open)}${highlightCss(body)}${highlightTag(close)}`));
+    output = output.replace(/(&lt;script\b[\s\S]*?&gt;)([\s\S]*?)(&lt;\/script&gt;)/gi, (_match, open, body, close) => protect(`${highlightTag(open)}${highlightJavaScript(body)}${highlightTag(close)}`));
+    return output.replace(/&lt;\/?[A-Za-z][\s\S]*?&gt;/g, highlightTag);
+  });
 }
 
 export default function SourceEditor({ value, language, wrap, fontSize, fontFamily, onChange }: Props) {
@@ -55,9 +96,10 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
   const findNext = () => {
     const input = textarea.current;
     if (!input || !query) return;
-    const from = Math.max(input.selectionEnd, 0);
-    let index = value.toLocaleLowerCase().indexOf(query.toLocaleLowerCase(), from);
-    if (index < 0) index = value.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
+    const source = value.toLocaleLowerCase();
+    const needle = query.toLocaleLowerCase();
+    let index = source.indexOf(needle, Math.max(input.selectionEnd, 0));
+    if (index < 0) index = source.indexOf(needle);
     if (index < 0) return;
     input.focus();
     input.setSelectionRange(index, index + query.length);
@@ -85,7 +127,7 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
   return (
     <div
       className={`source-editor ${wrap ? "wrap" : "nowrap"}`}
-      style={{ "--editor-font-size": `${fontSize}px`, "--editor-font-family": fontFamily } as React.CSSProperties}
+      style={{ "--editor-font-size": `${fontSize}px`, "--editor-font-family": fontFamily } as CSSProperties}
     >
       {searchOpen ? (
         <div className="editor-search" role="search">
