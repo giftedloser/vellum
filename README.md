@@ -1,248 +1,161 @@
 <p align="center">
-  <img src="public/vellum-icon-dark.png" width="128" height="128" alt="Vellum logo" />
+  <img src="public/vellum-icon-dark.png" width="112" height="112" alt="Vellum icon" />
 </p>
 
-<h1 align="center">Vellum</h1>
+<p align="center">
+  <img src="public/vellum-wordmark.png" width="320" alt="Vellum" />
+</p>
 
-<p align="center">A focused desktop viewer and lightweight source editor for Markdown and HTML files.</p>
+<p align="center">A quiet desktop home for reading and lightly editing Markdown and HTML.</p>
 
-Vellum provides a recent-first local sidebar, carefully typeset Markdown, full-surface HTML rendering, and just enough source editing to correct the document already being viewed. It does not include AI features, content generation, telemetry, cloud synchronization, visual HTML editing, extensions, language servers, terminals, or project tooling.
+<p align="center">
+  <a href="https://github.com/giftedloser/vellum/releases/latest"><strong>Download Vellum for Windows</strong></a>
+</p>
 
-The repository audit is documented in [`AUDIT.md`](AUDIT.md). The release-candidate pass is documented in [`RELEASE_AUDIT.md`](RELEASE_AUDIT.md).
+Vellum opens local documents in a clean, distraction-free window. Markdown is carefully typeset, HTML gets the full viewing surface, and a lightweight editor is there when you need to make a quick correction.
 
-Download the current Windows installers from [GitHub Releases](https://github.com/giftedloser/vellum/releases/latest).
+## Why Vellum
 
-## Design principles
+- **Read without clutter.** The interface stays out of the way until you need it.
+- **Keep documents close.** Pin important files or folders and quickly return to recent items.
+- **Make small edits.** Switch between the rendered document and its source without opening a full IDE.
+- **Stay local.** Vellum has no account, telemetry, cloud sync, or AI service.
+- **Choose your pace.** Adjust themes, reading width, text size, zoom, sidebar motion, and control visibility.
 
-Vellum is intentionally restrained.
+## Install
 
-- The document remains the visual priority.
-- Viewing is the default; editing is an optional mode for small source corrections.
-- Application chrome stays quiet, translucent, and collapsible.
-- HTML owns the complete browser surface without an artificial frame.
-- Markdown uses a measured reading width and deliberate typographic hierarchy.
-- Light and dark themes are designed independently rather than mechanically inverted.
-- Floating window, viewer, and editor controls use the same restrained visual system.
-- Accessibility, keyboard flow, reduced-motion support, and visible focus states are treated as core behavior.
-- New files are supported without introducing projects, workspaces, templates, or an IDE workflow.
+1. Download the latest installer from [GitHub Releases](https://github.com/giftedloser/vellum/releases/latest).
+2. Install and open Vellum. The current installer is unsigned, so Windows may show a SmartScreen warning.
+3. Choose **Open file** or **Open folder**, then pin anything you want to keep in the sidebar.
 
-## Brand system
+Vellum supports `.md`, `.markdown`, `.html`, and `.htm` files. Installing it also makes Vellum available under **Open with** and in Windows **Default apps** for those file types.
 
-The canonical sources are `public/vellum-icon-dark.png` and `public/vellum-icon-light.png`. The browser selects a matching theme favicon, while native application and installer assets are generated from the dark icon so platform assets stay consistent.
+## Usage
 
-```bash
-npm run icons
-```
+- Open one document or browse a complete folder.
+- Pin files and folders without moving or changing them on disk.
+- See recently used documents in activity order.
+- Create new Markdown or HTML files.
+- Edit source with syntax highlighting, search, undo/redo, word wrap, and adjustable code fonts.
+- Save, Save As, Revert, reload externally changed files, and preview unsaved edits.
+- Restore your last document when Vellum starts.
+- Use system, light, or dark appearance.
 
-The normal Tauri command runs icon generation automatically before launch or packaging:
+Removing an item from Vellum only removes it from the sidebar—it never deletes the file or folder.
 
-```bash
-npm run tauri -- dev
-npm run tauri -- build
-```
+## Useful shortcuts
 
-## Current capabilities
+| Action | Shortcut |
+| --- | --- |
+| Open file | `Ctrl+O` |
+| Open folder | `Ctrl+Shift+O` |
+| Show or hide sidebar | `Ctrl+B` |
+| Switch View/Edit | `Ctrl+E` |
+| Save | `Ctrl+S` |
+| Save As | `Ctrl+Shift+S` |
+| Find while editing | `Ctrl+F` |
+| Reload document | `Ctrl+R` |
+| Close document | `Ctrl+W` |
+| Open settings | `Ctrl+,` |
 
-- Tauri 2 desktop shell
-- React 19 and strict TypeScript
-- Open `.md`, `.markdown`, `.html`, and `.htm` files
-- Render sanitized Markdown and sandboxed HTML
-- Optional View/Edit source mode for the active document
-- Lazy CodeMirror 6 editor with parser-backed Markdown and HTML highlighting
-- Word wrap enabled by default
-- Search, undo/redo, tab indentation, bracket matching, and bracket/quote pairing
-- Explicit Save, Save As, and Revert actions
-- External-file-change detection before overwriting
-- Unsaved-change protection when switching, closing, or exiting
-- New Markdown and HTML documents with Save As on first write
-- Editor text-size and installed code-font controls
-- Pinned and Recent sidebar sections
-- Files and folders sorted by recent activity
-- Opening a file inside an added folder promotes the folder rather than creating a duplicate loose-file entry
-- Remove-from-sidebar behavior that never deletes files from disk
-- Restore the most recently opened document optionally
-- Collapsible translucent sidebar with persistent state
-- Quick, balanced, and relaxed sidebar-motion settings
-- Custom frameless title bar and native window controls
-- System, light, and dark appearance modes with live OS-theme updates
-- Optional auto-hide for the linked window and document control surfaces
-- Adjustable interface scale, viewer zoom, Markdown reading width, text scale, and line height
-- Keyboard shortcuts for common actions
-- Reduced-motion support
-- Explicit least-privilege Tauri capability
-- Frontend, Rust/Tauri, dependency, and Windows release CI validation
-- Windows file-association registration for Markdown and HTML
-- Unified application, favicon, taskbar, dock, installer, and bundle icon source
+On macOS, use `Cmd` instead of `Ctrl` where applicable.
 
-## Editor scope
+## Privacy and document safety
 
-The editor is intentionally not an IDE.
+Vellum works with local files and stores its sidebar and preferences on your device. It does not autosave or silently change documents. Before overwriting a file, it checks whether another application changed it, and unsaved work is protected when switching or closing.
 
-Included:
+HTML documents may load their own remote images, scripts, or other resources. Vellum displays them in an isolated viewer without giving them access to the application itself.
 
-- Markdown and HTML source editing
-- Parser-backed syntax highlighting
-- Word wrap
-- Search
-- Undo and redo
-- Tab indentation
-- Bracket matching and bracket/quote pairing
-- Save, Save As, and Revert
-- Theme-reactive colors
-- Adjustable source text size and font
+## Help and project links
 
-Excluded:
+- [Download releases](https://github.com/giftedloser/vellum/releases)
+- [Report a bug](https://github.com/giftedloser/vellum/issues/new?template=bug_report.yml)
+- [Request a feature](https://github.com/giftedloser/vellum/issues/new?template=feature_request.yml)
+- [Changelog](CHANGELOG.md)
+- [Security policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
 
-- WYSIWYG or rich-text editing
-- Language servers
-- build tools or preview servers
-- extensions or plugins
-- terminals
-- AI features
-- autocomplete suggestion UI
-- automatic formatting
-- autosave
-- linting pipelines
-- split panes
-- project or workspace creation
+<details>
+<summary><strong>Developer and technical details</strong></summary>
 
-## Sidebar behavior
+### Scope
 
-The sidebar has two content sections:
+Vellum is a focused viewer with lightweight source editing—not an IDE or visual site builder. It intentionally excludes language servers, terminals, extensions, project tooling, automatic formatting, autosave, linting pipelines, and split panes.
 
-- **Pinned** keeps manually retained files and folders fixed at the top.
-- **Recent** automatically sorts added files and folders by latest activity.
+### Technology
 
-Files and folders coexist. Opening a child document inside an added folder promotes that folder in Recent. Removing an item only removes it from Vellum's sidebar; it never deletes or changes the filesystem item.
+- Tauri 2 native desktop shell
+- React 19 with strict TypeScript
+- Lazy-loaded CodeMirror 6 Markdown and HTML editor
+- Sanitized Markdown rendering with DOMPurify
+- Sandboxed, opaque-origin HTML rendering
+- Least-privilege native file commands
+- Windows Markdown and HTML file associations
 
-## Windows default application support
+### Configuration
 
-The Windows installer registers Vellum as a viewer for:
+Vellum has no required environment variables or external services. User preferences are managed in Settings and stored locally on the device.
 
-- `.md`
-- `.markdown`
-- `.html`
-- `.htm`
+### Development
 
-Explorer passes the selected path to Vellum, and the native startup boundary validates, authorizes, and opens it through the same constrained document pipeline used by the in-app file picker.
-
-Windows does not permit an installer to silently take over a user's defaults. After installing Vellum, select it through **Settings → Apps → Default apps**, or use **Open with → Choose another app → Vellum** and enable the always-use option.
-
-## Keyboard shortcuts
-
-| Action | Windows / Linux | macOS |
-| --- | --- | --- |
-| Open file | `Ctrl+O` | `Cmd+O` |
-| Open folder | `Ctrl+Shift+O` | `Cmd+Shift+O` |
-| Toggle sidebar | `Ctrl+B` | `Cmd+B` |
-| Toggle View/Edit | `Ctrl+E` | `Cmd+E` |
-| Save | `Ctrl+S` | `Cmd+S` |
-| Save As | `Ctrl+Shift+S` | `Cmd+Shift+S` |
-| Find in editor | `Ctrl+F` | `Cmd+F` |
-| Reload document | `Ctrl+R` | `Cmd+R` |
-| Close active document | `Ctrl+W` | `Cmd+W` |
-| Open settings | `Ctrl+,` | `Cmd+,` |
-| Close settings, menus, or editor search | `Escape` | `Escape` |
-
-## Configuration
-
-Vellum has no required environment variables or external services. Appearance, reading, editor, sidebar-motion, control-visibility, and session-restoration preferences are managed in Settings and stored locally on the device.
-
-## Development
-
-### Requirements
+Requirements:
 
 - Node.js 20.19 or newer
-- Rust stable toolchain
-- Platform-specific Tauri prerequisites
-
-### Run locally
+- Rust stable
+- Platform-specific [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
 ```bash
 npm ci
 npm run tauri -- dev
 ```
 
-### Build installers
+Build installers:
 
 ```bash
 npm run tauri -- build
 ```
 
-### Testing and validation
+### Testing
 
 ```bash
 npm run build
-npm run icons
+npm audit --omit=dev --audit-level=high
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo test --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-GitHub Actions validates the frontend, dependency advisories, Rust/Tauri core, and a Windows release executable for pushes to `main` and pull requests.
+GitHub Actions independently validates the frontend, Rust/Tauri core, dependency advisories, formatting, tests, and a Windows release executable.
 
-## Project structure
+### Project structure
 
 ```text
-public/
-  vellum-icon-*.png     Canonical dark and light application identities
-  favicon-*.png         Optimized theme-aware browser favicons
-  fonts/                Bundled Style Script application-title font
-scripts/
-  generate-icons.mjs    Reproducible native icon generation
-src/
-  App.tsx               Existing application shell plus editor/sidebar integration
-  SourceEditor.tsx      Lazy CodeMirror Markdown and HTML source editor
-  editor.css            Editor, mode-toggle, and recent-sidebar styling
-  startup.ts            Native startup-file handoff for Windows associations
-  styles.css            Base themes and component styles
-  refinement.css        Typography, spacing, material, and renderer hierarchy
-  final.css             Accessibility, interaction details, branding, and grain isolation
-  control-system.css    Shared floating-control treatment
-src-tauri/
-  capabilities/         Least-privilege desktop permissions
-  icons/                Generated Windows, macOS, and Linux application icons
-  src/lib.rs            Authorized, bounded reads and protected document writes
-  tauri.conf.json       Desktop window, security, bundle, icon, and file-association configuration
-.github/workflows/
-  validate.yml          Frontend, dependency, Rust/Tauri, and Windows release validation
+public/                 Brand, font, texture, and favicon assets
+scripts/                Reproducible icon and wordmark generation
+src/                    React application, editor, and interface styles
+src-tauri/              Native commands, permissions, and bundle configuration
+.github/workflows/      Continuous integration
 AUDIT.md                Architecture and security audit
-RELEASE_AUDIT.md        Release-candidate security and optimization pass
+RELEASE_AUDIT.md        Release-candidate verification record
 ```
 
-## Security model
-
-Vellum reads and writes supported Markdown and HTML files through constrained Rust commands.
+### Native security boundary
 
 - Paths are canonicalized before scanning or reading.
-- A document must be inside a file or folder explicitly added to Vellum, or supplied as a validated operating-system startup document.
+- Documents must be inside a file or folder explicitly added to Vellum, or supplied as a validated startup document.
 - Folder traversal is cycle-aware and bounded by depth and entry-count limits.
-- Individual documents and editor writes are limited to 32 MB.
-- Existing files may only be overwritten when already authorized through Vellum's document boundary.
-- Save operations write and sync a temporary sibling file before replacing the destination, with rollback when replacement fails.
-- The application checks modification timestamps before overwriting an open document changed externally.
-- Markdown output is sanitized with DOMPurify before insertion.
-- HTML runs in a sandboxed opaque-origin frame without `allow-same-origin`.
-- HTML requests use a no-referrer policy.
-- The main Tauri window receives only the required core, open-dialog, and save-dialog permissions.
-- Release builds disable WebView developer tools explicitly.
-- Vellum never autosaves or silently modifies source files.
-- No telemetry, account system, AI service, or remote content-generation service is included.
-- Sidebar, active-document, and preference state are stored locally.
+- Documents and editor writes are limited to 32 MB.
+- Writes use a temporary sibling file, synchronization, replacement, and rollback on failure.
+- Markdown is sanitized before insertion.
+- HTML runs in a sandbox without `allow-same-origin` and uses a no-referrer policy.
+- Release builds disable WebView developer tools.
 
-HTML files may contain scripts and remote resources. They run within the configured sandbox and content-security constraints; Vellum does not grant them access to the application origin.
+The full reviews are available in [AUDIT.md](AUDIT.md), [RENDERER_AUDIT.md](RENDERER_AUDIT.md), and [RELEASE_AUDIT.md](RELEASE_AUDIT.md).
 
-## Release optimization
+### Branding and licenses
 
-The CodeMirror editor and language modules are lazy-loaded only when Edit mode is first opened. Normal viewer startup does not request or instantiate the editor chunk. CodeMirror compartments update wrapping, language, theme, font, and size without remounting the editor, and Markdown block decoration is limited to visible lines. Scroll-indicator geometry work is requestAnimationFrame-throttled, native interface zoom is updated only when interface scale changes, directory scans are bounded, and the Rust release profile uses whole-program link-time optimization, one code-generation unit, size-oriented optimization, stripped symbols, and abort-on-panic behavior.
+The canonical application icons are `public/vellum-icon-dark.png` and `public/vellum-icon-light.png`. Native assets are regenerated with `npm run icons`, and the README wordmark is rendered from the bundled Style Script font.
 
-## Distribution notes
+Vellum is available under the [MIT License](LICENSE). Style Script is licensed separately under the [SIL Open Font License 1.1](public/fonts/OFL.txt).
 
-- Windows MSI and NSIS installers are published with SHA-256 checksums on GitHub Releases.
-- The current installers are unsigned, so Windows may show a SmartScreen warning.
-- HTML compatibility depends on the document's own remote resources and browser assumptions.
-
-## License
-
-Vellum is available under the [MIT License](LICENSE).
-
-The bundled Style Script font is licensed separately under the SIL Open Font License 1.1; see [`public/fonts/OFL.txt`](public/fonts/OFL.txt).
+</details>
