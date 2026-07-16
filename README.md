@@ -46,9 +46,9 @@ npm run tauri -- build
 - Open `.md`, `.markdown`, `.html`, and `.htm` files
 - Render sanitized Markdown and sandboxed HTML
 - Optional View/Edit source mode for the active document
-- Lightweight Markdown and HTML syntax highlighting
+- Lazy CodeMirror 6 editor with parser-backed Markdown and HTML highlighting
 - Word wrap enabled by default
-- Search, native undo/redo, tab indentation, and bracket/quote pairing
+- Search, undo/redo, tab indentation, bracket matching, and bracket/quote pairing
 - Explicit Save, Save As, and Revert actions
 - External-file-change detection before overwriting
 - Unsaved-change protection when switching, closing, or exiting
@@ -77,12 +77,12 @@ The editor is intentionally not an IDE.
 Included:
 
 - Markdown and HTML source editing
-- Basic syntax highlighting
+- Parser-backed syntax highlighting
 - Word wrap
 - Search
-- Native undo and redo
+- Undo and redo
 - Tab indentation
-- Bracket and quote pairing
+- Bracket matching and bracket/quote pairing
 - Save, Save As, and Revert
 - Theme-reactive colors
 - Adjustable source text size and font
@@ -95,7 +95,7 @@ Excluded:
 - extensions or plugins
 - terminals
 - AI features
-- advanced autocomplete
+- autocomplete suggestion UI
 - automatic formatting
 - autosave
 - linting pipelines
@@ -181,7 +181,7 @@ scripts/
   generate-icons.mjs    Reproducible native icon generation
 src/
   App.tsx               Existing application shell plus editor/sidebar integration
-  SourceEditor.tsx      Lightweight Markdown and HTML source editor
+  SourceEditor.tsx      Lazy CodeMirror Markdown and HTML source editor
   editor.css            Editor, mode-toggle, and recent-sidebar styling
   startup.ts            Native startup-file handoff for Windows associations
   styles.css            Base themes and component styles
@@ -223,7 +223,7 @@ HTML files may contain scripts and remote resources. They run within the configu
 
 ## Release optimization
 
-The editor is lazy-loaded only when Edit mode is first opened. Normal viewer startup does not instantiate editor state. Syntax highlighting is local and dependency-free. Scroll-indicator geometry work is requestAnimationFrame-throttled, native interface zoom is updated only when interface scale changes, directory scans are bounded, and the Rust release profile uses whole-program link-time optimization, one code-generation unit, size-oriented optimization, stripped symbols, and abort-on-panic behavior.
+The CodeMirror editor and language modules are lazy-loaded only when Edit mode is first opened. Normal viewer startup does not request or instantiate the editor chunk. CodeMirror compartments update wrapping, language, theme, font, and size without remounting the editor. Scroll-indicator geometry work is requestAnimationFrame-throttled, native interface zoom is updated only when interface scale changes, directory scans are bounded, and the Rust release profile uses whole-program link-time optimization, one code-generation unit, size-oriented optimization, stripped symbols, and abort-on-panic behavior.
 
 ## Remaining release work
 
