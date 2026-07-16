@@ -124,7 +124,7 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
       "&.cm-focused": { outline: "none" },
     }, { dark }),
     syntaxHighlighting(HighlightStyle.define([
-      { tag: tags.heading, color: palette.heading, fontWeight: "650" },
+      { tag: [tags.heading1, tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6], color: palette.heading, fontWeight: "650" },
       { tag: [tags.keyword, tags.tagName], color: palette.keyword },
       { tag: [tags.attributeName, tags.propertyName], color: palette.attribute },
       { tag: [tags.string, tags.url], color: palette.string },
@@ -139,7 +139,7 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
 
 export default function SourceEditor({ value, language, wrap, fontSize, fontFamily, onChange }: Props) {
   const host = useRef<HTMLDivElement>(null);
-  const view = useRef<EditorView>();
+  const view = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const applyingExternal = useRef(false);
   const languageConfig = useRef(new Compartment()).current;
@@ -185,7 +185,7 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
 
     return () => {
       view.current?.destroy();
-      view.current = undefined;
+      view.current = null;
     };
   }, []);
 
