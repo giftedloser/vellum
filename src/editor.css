@@ -3,15 +3,20 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: var(--page-bg, transparent);
+  background-color: var(--surface);
+  background-image: url("/textures/grain.png");
+  background-repeat: repeat;
+  background-size: 1024px 1024px;
 }
 
 .source-editor .cm-editor {
   height: 100%;
+  background: transparent;
 }
 
 .source-editor .cm-scroller {
   overscroll-behavior: contain;
+  background: transparent;
 }
 
 .source-editor .cm-content {
@@ -38,41 +43,48 @@
   display: none;
 }
 
+/* Editor actions join the shared bottom-center control cluster. */
 .editor-controls-hotspot {
   position: absolute;
   z-index: 31;
-  top: 0;
-  left: 50%;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: flex;
-  width: min(760px, calc(100% - 250px));
-  height: 72px;
-  transform: translateX(-50%);
-  align-items: flex-start;
+  height: 84px;
+  align-items: flex-end;
   justify-content: center;
-  padding-top: 10px;
+  padding-bottom: 10px;
+  pointer-events: none;
 }
 
 .editor-controls {
   display: flex;
   align-items: center;
   height: 38px;
+  margin-left: 42px;
   padding: 2px;
   opacity: 0;
   pointer-events: none;
   color: var(--vellum-control-fg);
   background: var(--vellum-control-bg);
   border: 1px solid var(--vellum-control-border);
-  border-radius: 11px;
+  border-left: 0;
+  border-radius: 0 11px 11px 0;
   box-shadow: var(--vellum-control-shadow);
   backdrop-filter: blur(14px) saturate(120%);
-  transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  transform: translateY(3px) scale(.985);
+  transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease, background-color var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 
 .editor-controls-hotspot:hover .editor-controls,
 .editor-controls:focus-within {
   opacity: 1;
   pointer-events: auto;
+  transform: translateY(0) scale(1);
   background: var(--vellum-control-bg-hover);
+  border-color: rgba(255, 255, 255, .22);
 }
 
 .editor-controls button,
@@ -81,8 +93,8 @@
   min-width: 36px;
   border: 0;
   border-left: 1px solid var(--vellum-control-divider);
-  padding: 0 10px;
-  color: inherit;
+  padding: 0 9px;
+  color: var(--vellum-control-fg);
   background: transparent;
   font: inherit;
 }
@@ -92,61 +104,80 @@
 }
 
 .editor-controls button:hover:not(:disabled),
-.editor-controls select:hover {
-  color: var(--vellum-control-fg-strong);
-  background: color-mix(in srgb, currentColor 10%, transparent);
-}
-
+.editor-controls select:hover,
 .editor-controls button.active {
   color: var(--vellum-control-fg-strong);
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  background: rgba(255, 255, 255, .10);
 }
 
 .editor-controls button:disabled {
-  opacity: .38;
+  color: rgba(255, 255, 255, .34);
+  opacity: 1;
 }
 
 .editor-controls select {
-  max-width: 145px;
-  appearance: auto;
+  max-width: 132px;
+  color-scheme: dark;
 }
 
+/* Only the action for the other mode is shown, producing one compact toggle. */
 .editor-mode-toggle {
   position: absolute;
-  z-index: 29;
-  top: 12px;
-  right: 138px;
+  z-index: 33;
+  bottom: 10px;
+  left: 50%;
   display: flex;
-  height: 34px;
+  height: 38px;
+  transform: translateX(calc(-50% - 190px));
   padding: 2px;
-  border: 1px solid var(--vellum-control-border);
-  border-radius: 10px;
+  opacity: 0;
+  pointer-events: none;
   color: var(--vellum-control-fg);
   background: var(--vellum-control-bg);
+  border: 1px solid var(--vellum-control-border);
+  border-radius: 11px 0 0 11px;
   box-shadow: var(--vellum-control-shadow);
   backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+
+.main-pane:hover .editor-mode-toggle,
+.editor-mode-toggle:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  background: var(--vellum-control-bg-hover);
 }
 
 .editor-mode-toggle button {
+  display: none;
+  min-width: 42px;
+  height: 32px;
   border: 0;
-  border-radius: 7px;
-  padding: 0 11px;
-  color: inherit;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--vellum-control-fg);
   background: transparent;
-  opacity: .62;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.editor-mode-toggle button:not(.active) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .editor-mode-toggle button:hover,
-.editor-mode-toggle button:focus-visible,
-.editor-mode-toggle button.active {
-  opacity: 1;
-  background: color-mix(in srgb, currentColor 11%, transparent);
+.editor-mode-toggle button:focus-visible {
+  color: var(--vellum-control-fg-strong);
+  background: rgba(255, 255, 255, .10);
 }
 
 .unsaved-dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   margin-left: 6px;
   border-radius: 50%;
   background: currentColor;
@@ -167,7 +198,8 @@
 }
 
 @media (hover: none) {
-  .editor-controls {
+  .editor-controls,
+  .editor-mode-toggle {
     opacity: 1;
     pointer-events: auto;
   }
@@ -178,24 +210,18 @@
 }
 
 @media (max-width: 760px) {
-  .editor-controls-hotspot {
-    left: 18px;
-    width: calc(100% - 170px);
-    transform: none;
-    justify-content: flex-start;
-  }
-
   .editor-controls select {
     display: none;
   }
 
   .editor-mode-toggle {
-    right: 112px;
+    transform: translateX(calc(-50% - 150px));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .editor-controls {
+  .editor-controls,
+  .editor-mode-toggle {
     transition: none;
   }
 }
