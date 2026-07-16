@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 type Props = {
   value: string;
@@ -16,64 +16,23 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;");
 }
 
-function withProtectedSegments(value: string, transform: (protect: (segment: string) => string) => string) {
-  const protectedSegments: string[] = [];
-  const protect = (segment: string) => {
-    const index = protectedSegments.push(segment) - 1;
-    return `\uE000${index}\uE001`;
-  };
-  let output = transform(protect);
-  output = output.replace(/\uE000(\d+)\uE001/g, (_match, index) => protectedSegments[Number(index)] ?? "");
-  return output;
-}
-
 function highlightMarkdown(value: string) {
-  const escaped = escapeHtml(value);
-  return withProtectedSegments(escaped, (protect) => {
-    let output = escaped.replace(/```[\s\S]*?```|`[^`\n]+`/g, (segment) => protect(`<span class="tok-code">${segment}</span>`));
-    output = output.replace(/\[[^\]\n]+\]\([^\)\n]+\)/g, (segment) => protect(`<span class="tok-link">${segment}</span>`));
-    return output
-      .replace(/(^|\n)(#{1,6})([^\n]*)/g, '$1<span class="tok-heading">$2$3</span>')
-      .replace(/(\*\*[^*\n]+\*\*|__[^_\n]+__)/g, '<span class="tok-strong">$1</span>')
-      .replace(/(^|\n)(\s*(?:[-*+] |\d+\. ))/g, '$1<span class="tok-marker">$2</span>')
-      .replace(/(^|\n)(\s*&gt;[^\n]*)/g, '$1<span class="tok-quote">$2</span>');
-  });
-}
-
-function highlightTag(segment: string) {
-  return segment.replace(/(&lt;\/?)([A-Za-z][\w:-]*)([\s\S]*?)(&gt;)/, (_match, open, tag, rest, close) => {
-    const attributes = String(rest).replace(
-      /([\w:-]+)(\s*=\s*)("[^"]*"|'[^']*')/g,
-      '<span class="tok-attr">$1</span>$2<span class="tok-string">$3</span>',
-    );
-    return `${open}<span class="tok-tag">${tag}</span>${attributes}${close}`;
-  });
-}
-
-function highlightCss(value: string) {
-  return value
-    .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="tok-comment">$1</span>')
-    .replace(/("[^"]*"|'[^']*')/g, '<span class="tok-string">$1</span>')
-    .replace(/([\w-]+)(\s*:)/g, '<span class="tok-css-property">$1</span>$2')
-    .replace(/\b(\d+(?:\.\d+)?(?:px|rem|em|vh|vw|%|s|ms|deg)?)\b/g, '<span class="tok-number">$1</span>');
-}
-
-function highlightJavaScript(value: string) {
-  return value
-    .replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g, '<span class="tok-comment">$1</span>')
-    .replace(/(`(?:\\.|[^`])*`|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')/g, '<span class="tok-string">$1</span>')
-    .replace(/\b(const|let|var|function|return|if|else|for|while|switch|case|break|continue|class|new|import|export|from|async|await|try|catch|throw|true|false|null|undefined)\b/g, '<span class="tok-keyword">$1</span>')
-    .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-number">$1</span>');
+  return escapeHtml(value)
+    .replace(/(^|\n)(#{1,6})([^\n]*)/g, '$1<span class="tok-heading">$2$3</span>')
+    .replace(/(```[\s\S]*?```|`[^`\n]+`)/g, '<span class="tok-code">$1</span>')
+    .replace(/(\*\*[^*\n]+\*\*|__[^_\n]+__)/g, '<span class="tok-strong">$1</span>')
+    .replace(/(\[[^\]\n]+\]\([^\)\n]+\))/g, '<span class="tok-link">$1</span>')
+    .replace(/(^|\n)(\s*(?:[-*+] |\d+\. ))/g, '$1<span class="tok-marker">$2</span>')
+    .replace(/(^|\n)(\s*&gt;[^\n]*)/g, '$1<span class="tok-quote">$2</span>');
 }
 
 function highlightHtml(value: string) {
-  const escaped = escapeHtml(value);
-  return withProtectedSegments(escaped, (protect) => {
-    let output = escaped.replace(/&lt;!--[\s\S]*?--&gt;/g, (segment) => protect(`<span class="tok-comment">${segment}</span>`));
-    output = output.replace(/(&lt;style\b[\s\S]*?&gt;)([\s\S]*?)(&lt;\/style&gt;)/gi, (_match, open, body, close) => protect(`${highlightTag(open)}${highlightCss(body)}${highlightTag(close)}`));
-    output = output.replace(/(&lt;script\b[\s\S]*?&gt;)([\s\S]*?)(&lt;\/script&gt;)/gi, (_match, open, body, close) => protect(`${highlightTag(open)}${highlightJavaScript(body)}${highlightTag(close)}`));
-    return output.replace(/&lt;\/?[A-Za-z][\s\S]*?&gt;/g, highlightTag);
-  });
+  return escapeHtml(value)
+    .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="tok-comment">$1</span>')
+    .replace(/(&lt;\/?)([A-Za-z][\w:-]*)([^&]*?)(&gt;)/g, (_match, open, tag, rest, close) => {
+      const attributes = String(rest).replace(/([\w:-]+)(\s*=\s*)("[^"]*"|'[^']*')/g, '<span class="tok-attr">$1</span>$2<span class="tok-string">$3</span>');
+      return `${open}<span class="tok-tag">${tag}</span>${attributes}${close}`;
+    });
 }
 
 export default function SourceEditor({ value, language, wrap, fontSize, fontFamily, onChange }: Props) {
@@ -96,33 +55,59 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
   const findNext = () => {
     const input = textarea.current;
     if (!input || !query) return;
-    const source = value.toLocaleLowerCase();
+    const haystack = value.toLocaleLowerCase();
     const needle = query.toLocaleLowerCase();
-    let index = source.indexOf(needle, Math.max(input.selectionEnd, 0));
-    if (index < 0) index = source.indexOf(needle);
+    let index = haystack.indexOf(needle, Math.max(input.selectionEnd, 0));
+    if (index < 0) index = haystack.indexOf(needle);
     if (index < 0) return;
     input.focus();
     input.setSelectionRange(index, index + query.length);
   };
 
-  useEffect(() => {
-    const input = textarea.current;
-    if (!input) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const modifier = event.ctrlKey || event.metaKey;
-      if (modifier && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        setSearchOpen(true);
-      }
-      if (event.key === "Escape" && searchOpen) {
-        event.preventDefault();
-        setSearchOpen(false);
-        input.focus();
-      }
-    };
-    input.addEventListener("keydown", onKeyDown);
-    return () => input.removeEventListener("keydown", onKeyDown);
-  }, [searchOpen]);
+  const applyEdit = (next: string, selectionStart: number, selectionEnd = selectionStart) => {
+    onChange(next);
+    requestAnimationFrame(() => {
+      textarea.current?.focus();
+      textarea.current?.setSelectionRange(selectionStart, selectionEnd);
+    });
+  };
+
+  const onEditorKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const modifier = event.ctrlKey || event.metaKey;
+    if (modifier && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      setSearchOpen(true);
+      return;
+    }
+    if (event.key === "Escape" && searchOpen) {
+      event.preventDefault();
+      setSearchOpen(false);
+      textarea.current?.focus();
+      return;
+    }
+
+    const input = event.currentTarget;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const replacement = "  ";
+      applyEdit(`${value.slice(0, start)}${replacement}${value.slice(end)}`, start + replacement.length);
+      return;
+    }
+
+    const pairs: Record<string, string> = { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'", "`": "`" };
+    const closing = pairs[event.key];
+    if (!closing || modifier || event.altKey) return;
+
+    event.preventDefault();
+    const selected = value.slice(start, end);
+    const insertion = `${event.key}${selected}${closing}`;
+    const next = `${value.slice(0, start)}${insertion}${value.slice(end)}`;
+    if (selected) applyEdit(next, start + 1, end + 1);
+    else applyEdit(next, start + 1);
+  };
 
   return (
     <div
@@ -131,7 +116,7 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
     >
       {searchOpen ? (
         <div className="editor-search" role="search">
-          <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") findNext(); }} aria-label="Find in document" placeholder="Find" />
+          <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") findNext(); if (event.key === "Escape") { setSearchOpen(false); textarea.current?.focus(); } }} aria-label="Find in document" placeholder="Find" />
           <button type="button" onClick={findNext}>Next</button>
           <button type="button" onClick={() => { setSearchOpen(false); textarea.current?.focus(); }} aria-label="Close search">×</button>
         </div>
@@ -142,6 +127,7 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
         className="editor-input"
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onKeyDown={onEditorKeyDown}
         onScroll={syncScroll}
         spellCheck={false}
         autoCapitalize="off"
