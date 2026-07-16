@@ -4,9 +4,9 @@
 
 <h1 align="center">Vellum</h1>
 
-<p align="center">A focused desktop viewer for Markdown and HTML files.</p>
+<p align="center">A focused desktop viewer and lightweight source editor for Markdown and HTML files.</p>
 
-Vellum provides a persistent local library, carefully typeset Markdown, and full-surface HTML rendering in a compact Tauri application. It does not include AI features, content generation, telemetry, cloud synchronization, or visual HTML editing.
+Vellum provides a recent-first local sidebar, carefully typeset Markdown, full-surface HTML rendering, and just enough source editing to correct the document already being viewed. It does not include AI features, content generation, telemetry, cloud synchronization, visual HTML editing, extensions, language servers, terminals, or project tooling.
 
 The repository audit is documented in [`AUDIT.md`](AUDIT.md). The release-candidate pass is documented in [`RELEASE_AUDIT.md`](RELEASE_AUDIT.md).
 
@@ -15,12 +15,14 @@ The repository audit is documented in [`AUDIT.md`](AUDIT.md). The release-candid
 Vellum is intentionally restrained.
 
 - The document remains the visual priority.
+- Viewing is the default; editing is an optional mode for small source corrections.
 - Application chrome stays quiet, translucent, and collapsible.
 - HTML owns the complete browser surface without an artificial frame.
 - Markdown uses a measured reading width and deliberate typographic hierarchy.
 - Light and dark themes are designed independently rather than mechanically inverted.
-- Floating window and viewer controls remain hidden until their enlarged hover zones are entered or keyboard focus reaches them.
+- Floating window, viewer, and editor controls use the same restrained visual system.
 - Accessibility, keyboard flow, reduced-motion support, and visible focus states are treated as core behavior.
+- New files are supported without introducing projects, workspaces, templates, or an IDE workflow.
 
 ## Brand system
 
@@ -42,21 +44,72 @@ npm run tauri -- build
 - Tauri 2 desktop shell
 - React 19 and strict TypeScript
 - Open `.md`, `.markdown`, `.html`, and `.htm` files
-- Save individual files or nested folders in a persistent library
+- Render sanitized Markdown and sandboxed HTML
+- Optional View/Edit source mode for the active document
+- Lightweight Markdown and HTML syntax highlighting
+- Word wrap enabled by default
+- Search, native undo/redo, tab indentation, and bracket/quote pairing
+- Explicit Save, Save As, and Revert actions
+- External-file-change detection before overwriting
+- Unsaved-change protection when switching, closing, or exiting
+- New Markdown and HTML documents with Save As on first write
+- Editor text-size and installed code-font controls
+- Pinned and Recent sidebar sections
+- Files and folders sorted by recent activity
+- Opening a file inside an added folder promotes the folder rather than creating a duplicate loose-file entry
+- Remove-from-sidebar behavior that never deletes files from disk
 - Restore the most recently opened document optionally
 - Collapsible translucent sidebar with persistent state
 - Custom frameless title bar and native window controls
 - System, light, and dark appearance modes with live OS-theme updates
 - Adjustable interface scale, viewer zoom, Markdown reading width, text scale, and line height
-- Sanitized Markdown rendering
-- Sandboxed HTML rendering in an opaque origin
-- Edge-to-edge HTML browser view
 - Keyboard shortcuts for common actions
 - Reduced-motion support
 - Explicit least-privilege Tauri capability
-- Frontend, Rust/Tauri, and Windows release CI validation
+- Frontend, Rust/Tauri, dependency, and Windows release CI validation
 - Windows file-association registration for Markdown and HTML
 - Unified application, favicon, taskbar, dock, installer, and bundle icon source
+
+## Editor scope
+
+The editor is intentionally not an IDE.
+
+Included:
+
+- Markdown and HTML source editing
+- Basic syntax highlighting
+- Word wrap
+- Search
+- Native undo and redo
+- Tab indentation
+- Bracket and quote pairing
+- Save, Save As, and Revert
+- Theme-reactive colors
+- Adjustable source text size and font
+
+Excluded:
+
+- WYSIWYG or rich-text editing
+- Language servers
+- build tools or preview servers
+- extensions or plugins
+- terminals
+- AI features
+- advanced autocomplete
+- automatic formatting
+- autosave
+- linting pipelines
+- split panes
+- project or workspace creation
+
+## Sidebar behavior
+
+The sidebar has two content sections:
+
+- **Pinned** keeps manually retained files and folders fixed at the top.
+- **Recent** automatically sorts added files and folders by latest activity.
+
+Files and folders coexist. Opening a child document inside an added folder promotes that folder in Recent. Removing an item only removes it from Vellum's sidebar; it never deletes or changes the filesystem item.
 
 ## Windows default application support
 
@@ -78,10 +131,14 @@ Windows does not permit an installer to silently take over a user's defaults. Af
 | Open file | `Ctrl+O` | `Cmd+O` |
 | Open folder | `Ctrl+Shift+O` | `Cmd+Shift+O` |
 | Toggle sidebar | `Ctrl+B` | `Cmd+B` |
+| Toggle View/Edit | `Ctrl+E` | `Cmd+E` |
+| Save | `Ctrl+S` | `Cmd+S` |
+| Save As | `Ctrl+Shift+S` | `Cmd+Shift+S` |
+| Find in editor | `Ctrl+F` | `Cmd+F` |
 | Reload document | `Ctrl+R` | `Cmd+R` |
 | Close active document | `Ctrl+W` | `Cmd+W` |
 | Open settings | `Ctrl+,` | `Cmd+,` |
-| Close settings or menus | `Escape` | `Escape` |
+| Close settings, menus, or editor search | `Escape` | `Escape` |
 
 ## Development
 
@@ -113,7 +170,7 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-GitHub Actions validates the frontend, Rust/Tauri core, and a Windows release executable for pushes to `main` and pull requests.
+GitHub Actions validates the frontend, dependency advisories, Rust/Tauri core, and a Windows release executable for pushes to `main` and pull requests.
 
 ## Project structure
 
@@ -123,53 +180,57 @@ public/
 scripts/
   generate-icons.mjs    Reproducible native icon generation
 src/
-  App.tsx               Application state, persistence, shortcuts, settings, and renderers
+  App.tsx               Existing application shell plus editor/sidebar integration
+  SourceEditor.tsx      Lightweight Markdown and HTML source editor
+  editor.css            Editor, mode-toggle, and recent-sidebar styling
   startup.ts            Native startup-file handoff for Windows associations
   styles.css            Base themes and component styles
   refinement.css        Typography, spacing, material, and renderer hierarchy
   final.css             Accessibility, interaction details, branding, and grain isolation
-  control-system.css    Shared hidden-on-hover floating-control treatment
+  control-system.css    Shared floating-control treatment
 src-tauri/
   capabilities/         Least-privilege desktop permissions
   icons/                Generated Windows, macOS, and Linux application icons
-  src/lib.rs            Authorized and bounded local filesystem commands
+  src/lib.rs            Authorized, bounded reads and protected document writes
   tauri.conf.json       Desktop window, security, bundle, icon, and file-association configuration
 .github/workflows/
-  validate.yml          Frontend, Rust/Tauri, and Windows release validation
+  validate.yml          Frontend, dependency, Rust/Tauri, and Windows release validation
 AUDIT.md                Architecture and security audit
 RELEASE_AUDIT.md        Release-candidate security and optimization pass
 ```
 
 ## Security model
 
-Vellum reads supported Markdown and HTML files through constrained Rust commands.
+Vellum reads and writes supported Markdown and HTML files through constrained Rust commands.
 
 - Paths are canonicalized before scanning or reading.
-- A document must be inside a file or folder explicitly added to the active Vellum library, or supplied as a validated operating-system startup document.
+- A document must be inside a file or folder explicitly added to Vellum, or supplied as a validated operating-system startup document.
 - Folder traversal is cycle-aware and bounded by depth and entry-count limits.
-- Individual documents are limited to 32 MB.
+- Individual documents and editor writes are limited to 32 MB.
+- Existing files may only be overwritten when already authorized through Vellum's document boundary.
+- Save operations write and sync a temporary sibling file before replacing the destination, with rollback when replacement fails.
+- The application checks modification timestamps before overwriting an open document changed externally.
 - Markdown output is sanitized with DOMPurify before insertion.
 - HTML runs in a sandboxed opaque-origin frame without `allow-same-origin`.
 - HTML requests use a no-referrer policy.
-- The main Tauri window receives only core defaults and open-dialog permission.
+- The main Tauri window receives only the required core, open-dialog, and save-dialog permissions.
 - Release builds disable WebView developer tools explicitly.
-- Vellum does not modify source files automatically.
+- Vellum never autosaves or silently modifies source files.
 - No telemetry, account system, AI service, or remote content-generation service is included.
-- Library, active-document, sidebar, and preference state are stored locally.
+- Sidebar, active-document, and preference state are stored locally.
 
 HTML files may contain scripts and remote resources. They run within the configured sandbox and content-security constraints; Vellum does not grant them access to the application origin.
 
 ## Release optimization
 
-The Rust release profile uses whole-program link-time optimization, one code-generation unit, size-oriented optimization, stripped symbols, and abort-on-panic behavior. CI includes a native Windows release build to detect packaging and association regressions before release.
+The editor is lazy-loaded only when Edit mode is first opened. Normal viewer startup does not instantiate editor state. Syntax highlighting is local and dependency-free. Scroll-indicator geometry work is requestAnimationFrame-throttled, native interface zoom is updated only when interface scale changes, directory scans are bounded, and the Rust release profile uses whole-program link-time optimization, one code-generation unit, size-oriented optimization, stripped symbols, and abort-on-panic behavior.
 
 ## Remaining release work
 
 - Select and add a license before public distribution
 - Sign Windows installers and publish checksums
-- Smoke-test MSI and NSIS installation, upgrade, uninstall, and file-association behavior
+- Smoke-test MSI and NSIS installation, upgrade, uninstall, file associations, Save, and Save As behavior
 - Test complex third-party HTML and relative local assets
-- Add file watching and debounced reload
 - Add release provenance when distribution begins
 
 ## License
