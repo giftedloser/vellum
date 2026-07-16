@@ -6,6 +6,7 @@ import "./styles.css";
 import "./refinement.css";
 import "./final.css";
 import "./control-system.css";
+import "./editor.css";
 
 await bootstrapStartupDocument();
 
