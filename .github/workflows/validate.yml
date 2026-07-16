@@ -28,12 +28,24 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Build frontend
-        run: npm run build
+        id: frontend-build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee frontend-build.log
+
+      - name: Upload frontend failure log
+        if: failure() && steps.frontend-build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-log
+          path: frontend-build.log
+          retention-days: 7
 
   security:
     name: Dependency security audit
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -48,10 +60,23 @@ jobs:
       - name: Audit production JavaScript dependencies
         run: npm audit --omit=dev --audit-level=high
 
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
       - name: Audit Rust dependencies
-        uses: rustsec/audit-check@v2.0.0
+        id: rust-audit
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo audit --file src-tauri/Cargo.lock 2>&1 | tee rust-audit.log
+
+      - name: Upload Rust audit failure log
+        if: failure() && steps.rust-audit.outcome == 'failure'
+        uses: actions/upload-artifact@v4
         with:
-          working-directory: src-tauri
+          name: rust-audit-log
+          path: rust-audit.log
+          retention-days: 7
 
   tauri:
     name: Rust and Tauri check
@@ -94,7 +119,19 @@ jobs:
         run: npm run icons
 
       - name: Check Rust formatting
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+        id: rust-format
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check 2>&1 | tee rust-format.log
+
+      - name: Upload Rust formatting failure log
+        if: failure() && steps.rust-format.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-format-log
+          path: rust-format.log
+          retention-days: 7
 
       - name: Test Tauri core
         run: cargo test --manifest-path src-tauri/Cargo.toml
