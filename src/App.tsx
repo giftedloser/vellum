@@ -56,7 +56,7 @@ type ResolvedTheme = Exclude<Theme, "system">;
 type ContextMenuState = { x: number; y: number; path?: string; root?: boolean };
 type ViewerMetrics = { contentWidth: number; viewportWidth: number };
 type RecentItem = { path: string; lastOpened: number };
-type EditorFont = "JetBrains Mono" | "Cascadia Code" | "IBM Plex Mono" | "Fira Code";
+type EditorFont = "Cascadia Code" | "JetBrains Mono" | "IBM Plex Mono" | "Fira Code";
 
 type Preferences = {
   theme: Theme;
@@ -88,8 +88,8 @@ const defaultPreferences: Preferences = {
   editorFont: "Cascadia Code",
 };
 const editorFonts: Record<EditorFont, string> = {
-  "JetBrains Mono": '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
   "Cascadia Code": '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
+  "JetBrains Mono": '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
   "IBM Plex Mono": '"IBM Plex Mono", "Cascadia Code", Consolas, monospace',
   "Fira Code": '"Fira Code", "Cascadia Code", Consolas, monospace',
 };
@@ -108,6 +108,10 @@ function isSupported(path: string) {
 
 function documentKind(path: string): "markdown" | "html" {
   return extension(path).startsWith("htm") ? "html" : "markdown";
+}
+
+function ensureExtension(path: string, kind: "markdown" | "html") {
+  return isSupported(path) ? path : `${path}.${kind === "html" ? "html" : "md"}`;
 }
 
 function readStored<T>(key: string, fallback: T): T {
@@ -129,15 +133,14 @@ function findEntry(entries: Entry[], path: string): Entry | undefined {
 
 function pathIsInside(root: string, path: string) {
   if (root === path) return true;
-  const separator = root.includes("\\") ? "\\" : "/";
-  return path.startsWith(root.endsWith(separator) ? root : `${root}${separator}`);
+  return path.startsWith(`${root}\\`) || path.startsWith(`${root}/`);
 }
 
 function rootForPath(roots: Entry[], path: string) {
   return roots.find((entry) => pathIsInside(entry.path, path));
 }
 
-const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const updateScroll=event=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{const target=event.target===document?document.scrollingElement:event.target;if(!target)return;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)})};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",updateScroll,true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY},"*")})})()`;
+const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY},"*")})})()`;
 
 function prepareHtml(content: string, theme: ResolvedTheme) {
   const thumb = theme === "dark" ? "rgba(220,212,196,.24)" : "rgba(92,78,54,.28)";
@@ -153,21 +156,22 @@ function documentIcon(path: string, size = 15) {
     : <FileText size={size} className="icon-markdown" aria-hidden="true" />;
 }
 
-function TreeNode({ entry, activePath, root, pinned, onOpen, onPin, onRemove, onContextMenu }: {
+function TreeNode({ entry, activePath, root = false, pinned = false, onOpen, onPin, onRemove, onContextMenu }: {
   entry: Entry;
   activePath?: string;
   root?: boolean;
-  pinned: boolean;
+  pinned?: boolean;
   onOpen: (path: string) => void;
-  onPin: (path: string) => void;
+  onPin?: (path: string) => void;
   onRemove?: (path: string) => void;
   onContextMenu: (event: ReactMouseEvent, path: string, root: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const isDirectory = entry.kind === "directory";
+
   return (
     <div className={`tree-node ${root ? "tree-root" : ""}`}>
-      <div className={`tree-row-wrap ${activePath === entry.path ? "active" : ""}`} onContextMenu={(event) => onContextMenu(event, entry.path, Boolean(root))}>
+      <div className={`tree-row-wrap ${activePath === entry.path ? "active" : ""}`} onContextMenu={(event) => onContextMenu(event, entry.path, root)}>
         <button
           type="button"
           className="tree-row"
@@ -179,14 +183,16 @@ function TreeNode({ entry, activePath, root, pinned, onOpen, onPin, onRemove, on
           {isDirectory ? expanded ? <FolderOpen size={16} className="icon-folder" /> : <Folder size={16} className="icon-folder" /> : documentIcon(entry.path)}
           <span className="tree-label">{entry.name}</span>
         </button>
-        <button type="button" className="tree-remove tree-pin" onClick={() => onPin(entry.path)} title={pinned ? "Unpin" : "Pin"} aria-label={`${pinned ? "Unpin" : "Pin"} ${entry.name}`}>
-          {pinned ? <PinOff size={12} /> : <Pin size={12} />}
-        </button>
+        {root && onPin ? (
+          <button type="button" className="tree-remove tree-pin" onClick={() => onPin(entry.path)} title={pinned ? "Unpin" : "Pin"} aria-label={`${pinned ? "Unpin" : "Pin"} ${entry.name}`}>
+            {pinned ? <PinOff size={12} /> : <Pin size={12} />}
+          </button>
+        ) : null}
         {root && onRemove ? <button type="button" className="tree-remove" onClick={() => onRemove(entry.path)} title="Remove from sidebar" aria-label={`Remove ${entry.name} from sidebar`}><X size={13} /></button> : null}
       </div>
       {isDirectory && expanded && entry.children?.length ? (
         <div className="tree-children">
-          {entry.children.map((child) => <TreeNode key={child.path} entry={child} activePath={activePath} pinned={pinned} onOpen={onOpen} onPin={onPin} onContextMenu={onContextMenu} />)}
+          {entry.children.map((child) => <TreeNode key={child.path} entry={child} activePath={activePath} onOpen={onOpen} onContextMenu={onContextMenu} />)}
         </div>
       ) : null}
     </div>
@@ -213,16 +219,21 @@ function App() {
   const libraryRestored = useRef(false);
   const documentRestored = useRef(false);
   const openRequest = useRef(0);
+  const rootsRef = useRef<Entry[]>([]);
+  const dirtyRef = useRef(false);
 
   const activePath = activeDocument?.draft ? undefined : activeDocument?.path;
   const htmlMode = activeDocument?.kind === "html";
   const dirty = Boolean(activeDocument && draftContent !== activeDocument.content);
 
+  rootsRef.current = roots;
+  dirtyRef.current = dirty;
+
   const touchRecent = useCallback((path: string) => {
     setRecent((current) => [{ path, lastOpened: Date.now() }, ...current.filter((item) => item.path !== path)].slice(0, 30));
   }, []);
 
-  const confirmDiscard = useCallback(() => !dirty || window.confirm("Discard unsaved changes?"), [dirty]);
+  const confirmDiscard = useCallback(() => !dirtyRef.current || window.confirm("Discard unsaved changes?"), []);
 
   const openDocument = useCallback(async (path: string) => {
     if (!isSupported(path) || !confirmDiscard()) return;
@@ -239,12 +250,12 @@ function App() {
       setActiveDocument({ path, name: basename(path), content, kind: documentKind(path), modifiedMs });
       setDraftContent(content);
       setEditMode(false);
-      const owner = rootForPath(roots, path);
+      const owner = rootForPath(rootsRef.current, path);
       touchRecent(owner?.path ?? path);
     } catch (cause) {
       if (request === openRequest.current) setError(String(cause));
     }
-  }, [confirmDiscard, roots, touchRecent]);
+  }, [confirmDiscard, touchRecent]);
 
   const choosePath = useCallback(async () => {
     if (!confirmDiscard()) return;
@@ -253,6 +264,7 @@ function App() {
     try {
       const entry = await invoke<Entry>("scan_path", { path: selected });
       setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
+      rootsRef.current = rootsRef.current.some((item) => item.path === entry.path) ? rootsRef.current : [...rootsRef.current, entry];
       touchRecent(entry.path);
       await openDocument(entry.path);
     } catch (cause) {
@@ -274,30 +286,25 @@ function App() {
 
   const saveCurrent = useCallback(async (saveAs = false) => {
     if (!activeDocument) return;
-    let path = activeDocument.path;
-    if (activeDocument.draft || saveAs) {
-      const selected = await save({
-        defaultPath: activeDocument.name,
-        filters: [{ name: activeDocument.kind === "html" ? "HTML" : "Markdown", extensions: activeDocument.kind === "html" ? ["html", "htm"] : ["md", "markdown"] }],
-      });
-      if (!selected) return;
-      path = selected;
-    } else {
-      try {
+    try {
+      let path = activeDocument.path;
+      if (activeDocument.draft || saveAs) {
+        const selected = await save({
+          defaultPath: activeDocument.name,
+          filters: [{ name: activeDocument.kind === "html" ? "HTML" : "Markdown", extensions: activeDocument.kind === "html" ? ["html", "htm"] : ["md", "markdown"] }],
+        });
+        if (typeof selected !== "string") return;
+        path = ensureExtension(selected, activeDocument.kind);
+      } else {
         const modifiedMs = await invoke<number>("document_modified_ms", { path });
         if (modifiedMs !== activeDocument.modifiedMs && !window.confirm("This file changed outside Vellum. Overwrite the newer version?")) return;
-      } catch (cause) {
-        setError(String(cause));
-        return;
       }
-    }
-    try {
+
       const modifiedMs = await invoke<number>("write_document", { path, content: draftContent });
-      const next: OpenDocument = { path, name: basename(path), content: draftContent, kind: documentKind(path), modifiedMs };
-      setActiveDocument(next);
-      setDraftContent(draftContent);
-      setRoots((current) => current.some((entry) => entry.path === path) ? current : [...current, { name: basename(path), path, kind: "file" }]);
-      touchRecent(path);
+      const entry = await invoke<Entry>("scan_path", { path });
+      setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: documentKind(entry.path), modifiedMs });
+      setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
+      touchRecent(entry.path);
     } catch (cause) {
       setError(String(cause));
     }
@@ -325,6 +332,11 @@ function App() {
     setEditMode(false);
   }, [confirmDiscard]);
 
+  const reloadDocument = useCallback(async () => {
+    if (!activeDocument || activeDocument.draft || !confirmDiscard()) return;
+    await openDocument(activeDocument.path);
+  }, [activeDocument, confirmDiscard, openDocument]);
+
   useEffect(() => {
     let cancelled = false;
     const restore = async () => {
@@ -335,6 +347,7 @@ function App() {
       if (cancelled) return;
       const restored = entries.filter((entry): entry is Entry => Boolean(entry));
       setRoots(restored);
+      rootsRef.current = restored;
       setRecent((current) => current.length ? current : restored.map((entry, index) => ({ path: entry.path, lastOpened: Date.now() - index })));
       libraryRestored.current = true;
       if (preferences.rememberDocument) {
@@ -385,10 +398,10 @@ function App() {
     let timer: number | undefined;
     let frame = 0;
     const onScroll = (event: Event) => {
-      window.cancelAnimationFrame(frame);
+      if (!(event.target instanceof Element) || frame) return;
+      const target = event.target;
       frame = window.requestAnimationFrame(() => {
-        if (!(event.target instanceof Element)) return;
-        const target = event.target;
+        frame = 0;
         const rect = target.getBoundingClientRect();
         const height = Math.max(18, rect.height * rect.height / target.scrollHeight);
         const travel = Math.max(0, rect.height - height);
@@ -438,10 +451,10 @@ function App() {
     if (!appWindow) return;
     let unlisten: (() => void) | undefined;
     void appWindow.onCloseRequested((event) => {
-      if (dirty && !window.confirm("Close Vellum and discard unsaved changes?")) event.preventDefault();
+      if (dirtyRef.current && !window.confirm("Close Vellum and discard unsaved changes?")) event.preventDefault();
     }).then((dispose) => { unlisten = dispose; });
     return () => unlisten?.();
-  }, [dirty]);
+  }, []);
 
   useEffect(() => {
     const closeMenu = () => setContextMenu(undefined);
@@ -458,7 +471,7 @@ function App() {
       const x = Number(event.data.x);
       const y = Number(event.data.y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-      setContextMenu({ x: Math.min(rect.left + x, window.innerWidth - 222), y: Math.min(rect.top + y, window.innerHeight - 390) });
+      setContextMenu({ x: Math.min(rect.left + x, window.innerWidth - 222), y: Math.min(rect.top + y, window.innerHeight - 430) });
     };
     window.addEventListener("pointerdown", closeMenu);
     window.addEventListener("blur", closeMenu);
@@ -489,7 +502,7 @@ function App() {
     else if (key === "o") { event.preventDefault(); void (event.shiftKey ? chooseFolder() : choosePath()); }
     else if (key === "b") { event.preventDefault(); setSidebarOpen((value) => !value); }
     else if (key === ",") { event.preventDefault(); setSettingsOpen(true); }
-    else if (key === "r" && activeDocument && !editMode) { event.preventDefault(); void openDocument(activeDocument.path); }
+    else if (key === "r" && activeDocument && !editMode) { event.preventDefault(); void reloadDocument(); }
     else if (key === "w" && activeDocument) { event.preventDefault(); closeDocument(); }
   });
 
@@ -500,24 +513,24 @@ function App() {
 
   const renderedMarkdown = useMemo(() => {
     if (!activeDocument || activeDocument.kind !== "markdown") return "";
-    return DOMPurify.sanitize(marked.parse(activeDocument.content, { async: false }) as string);
-  }, [activeDocument]);
+    return DOMPurify.sanitize(marked.parse(draftContent, { async: false }) as string);
+  }, [activeDocument, draftContent]);
 
   const renderedHtml = useMemo(() => {
     if (!activeDocument || activeDocument.kind !== "html") return "";
-    return prepareHtml(activeDocument.content, resolvedTheme);
-  }, [activeDocument, resolvedTheme]);
+    return prepareHtml(draftContent, resolvedTheme);
+  }, [activeDocument, draftContent, resolvedTheme]);
 
   useEffect(() => {
     if (!htmlMode || editMode) return;
     htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: preferences.viewerZoom }, "*");
   }, [editMode, htmlMode, preferences.viewerZoom]);
 
-  const pinnedEntries = pinned.map((path) => findEntry(roots, path)).filter((entry): entry is Entry => Boolean(entry));
+  const pinnedEntries = pinned.map((path) => roots.find((entry) => entry.path === path)).filter((entry): entry is Entry => Boolean(entry));
   const recentEntries = [...recent]
     .sort((a, b) => b.lastOpened - a.lastOpened)
     .filter((item) => !pinned.includes(item.path))
-    .map((item) => findEntry(roots, item.path))
+    .map((item) => roots.find((entry) => entry.path === item.path))
     .filter((entry): entry is Entry => Boolean(entry));
 
   function removeSidebarItem(path: string) {
@@ -571,7 +584,7 @@ function App() {
           <section className="sidebar-section recent-section">
             <div className="section-label"><RefreshCw size={11} /> Recent</div>
             <div className="tree">
-              {recentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinned={false} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
+              {recentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
               {!recentEntries.length ? <div className="section-empty">Open a file or folder</div> : null}
             </div>
           </section>
@@ -604,7 +617,7 @@ function App() {
                   <button type="button" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: Math.max(11, current.editorFontSize - 1) }))} title="Decrease editor text" aria-label="Decrease editor text"><ZoomOut size={14} /></button>
                   <button type="button" className="zoom-value" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: 14 }))} title="Reset editor text size">{preferences.editorFontSize}px</button>
                   <button type="button" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: Math.min(22, current.editorFontSize + 1) }))} title="Increase editor text" aria-label="Increase editor text"><ZoomIn size={14} /></button>
-                  <select aria-label="Editor font" value={preferences.editorFont} onChange={(event) => setPreferences((current) => ({ ...current, editorFont: event.target.value as EditorFont }))}><option>JetBrains Mono</option><option>Cascadia Code</option><option>IBM Plex Mono</option><option>Fira Code</option></select>
+                  <select aria-label="Editor font" value={preferences.editorFont} onChange={(event) => setPreferences((current) => ({ ...current, editorFont: event.target.value as EditorFont }))}><option>Cascadia Code</option><option>JetBrains Mono</option><option>IBM Plex Mono</option><option>Fira Code</option></select>
                 </div></div>
                 <Suspense fallback={<div className="welcome"><p>Loading editor…</p></div>}><SourceEditor value={draftContent} language={activeDocument.kind} wrap={preferences.editorWrap} fontSize={preferences.editorFontSize} fontFamily={editorFonts[preferences.editorFont]} onChange={setDraftContent} /></Suspense>
               </div>
@@ -627,17 +640,16 @@ function App() {
         {contextMenu.path && isSupported(contextMenu.path) ? <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void openDocument(contextMenu.path!); }}>{documentIcon(contextMenu.path, 14)}Open selected</button> : null}
         <div className="context-menu-separator" />
         <div className="context-menu-label">Document</div>
+        <button type="button" role="menuitem" disabled={!activeDocument || activeDocument.draft} onClick={() => { setContextMenu(undefined); void reloadDocument(); }}><RefreshCw size={14} />Reload<span>Ctrl R</span></button>
+        <button type="button" role="menuitem" disabled={!activeDocument} onClick={() => { setContextMenu(undefined); void saveCurrent(false); }}><Save size={14} />Save<span>Ctrl S</span></button>
         <button type="button" role="menuitem" disabled={!activeDocument} onClick={() => { setContextMenu(undefined); setEditMode((value) => !value); }}>{editMode ? <FileText size={14} /> : <FileCode2 size={14} />}{editMode ? "View document" : "Edit source"}<span>Ctrl E</span></button>
-        <button type="button" role="menuitem" disabled={!activeDocument || (!dirty && !activeDocument.draft)} onClick={() => { setContextMenu(undefined); void saveCurrent(false); }}><Save size={14} />Save<span>Ctrl S</span></button>
-        <button type="button" role="menuitem" disabled={!activeDocument} onClick={() => { setContextMenu(undefined); if (activeDocument && !editMode) void openDocument(activeDocument.path); }}><RefreshCw size={14} />Reload<span>Ctrl R</span></button>
         <button type="button" role="menuitem" disabled={!activeDocument} onClick={() => { setContextMenu(undefined); closeDocument(); }}><X size={14} />Close<span>Ctrl W</span></button>
-        {contextMenu.path ? <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); togglePin(contextMenu.path!); }}>{pinned.includes(contextMenu.path) ? <PinOff size={14} /> : <Pin size={14} />}{pinned.includes(contextMenu.path) ? "Unpin" : "Pin"}</button> : null}
         <div className="context-menu-separator" />
         <div className="context-menu-label">View</div>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: 100 })); }}><ZoomIn size={14} />Reset zoom<span>{preferences.viewerZoom}%</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSidebarOpen((value) => !value); }}>{sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}{sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}<span>Ctrl B</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); toggleTheme(); }}>{resolvedTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />}Switch theme</button>
-        {contextMenu.root && contextMenu.path ? <><div className="context-menu-separator" /><button type="button" role="menuitem" className="context-danger" onClick={() => { setContextMenu(undefined); removeSidebarItem(contextMenu.path!); }}><X size={14} />Remove from sidebar</button></> : null}
+        {contextMenu.root && contextMenu.path ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); togglePin(contextMenu.path!); }}>{pinned.includes(contextMenu.path) ? <PinOff size={14} /> : <Pin size={14} />}{pinned.includes(contextMenu.path) ? "Unpin" : "Pin"}</button><button type="button" role="menuitem" className="context-danger" onClick={() => { setContextMenu(undefined); removeSidebarItem(contextMenu.path!); }}><X size={14} />Remove from sidebar</button></> : null}
         <div className="context-menu-separator" />
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSettingsOpen(true); }}><Settings size={14} />Settings<span>Ctrl ,</span></button>
       </div> : null}
@@ -657,11 +669,11 @@ function App() {
           <div className="setting-row range-row"><div><strong>Line spacing</strong><span>Adjust the rhythm of rendered Markdown paragraphs.</span></div><label><input aria-label="Markdown line spacing" type="range" min="145" max="195" step="5" value={preferences.lineHeight} onChange={(event) => setPreferences((current) => ({ ...current, lineHeight: Number(event.target.value) }))} /><span>{preferences.lineHeight}%</span></label></div>
           <h3 className="settings-group-label">Editor</h3>
           <div className="setting-row"><div><strong>Word wrap</strong><span>Wrap long Markdown and HTML lines by default.</span></div><label className="switch"><input aria-label="Editor word wrap" type="checkbox" checked={preferences.editorWrap} onChange={(event) => setPreferences((current) => ({ ...current, editorWrap: event.target.checked }))} /><span aria-hidden="true" /></label></div>
-          <div className="setting-row"><div><strong>Code font</strong><span>Use an installed coding font with safe fallbacks.</span></div><select aria-label="Editor font" value={preferences.editorFont} onChange={(event) => setPreferences((current) => ({ ...current, editorFont: event.target.value as EditorFont }))}><option>JetBrains Mono</option><option>Cascadia Code</option><option>IBM Plex Mono</option><option>Fira Code</option></select></div>
+          <div className="setting-row"><div><strong>Code font</strong><span>Use an installed coding font with safe system fallbacks.</span></div><select aria-label="Editor code font" value={preferences.editorFont} onChange={(event) => setPreferences((current) => ({ ...current, editorFont: event.target.value as EditorFont }))}><option>Cascadia Code</option><option>JetBrains Mono</option><option>IBM Plex Mono</option><option>Fira Code</option></select></div>
           <div className="setting-row range-row"><div><strong>Editor text size</strong><span>Adjust source text without changing rendered documents.</span></div><label><input aria-label="Editor text size" type="range" min="11" max="22" value={preferences.editorFontSize} onChange={(event) => setPreferences((current) => ({ ...current, editorFontSize: Number(event.target.value) }))} /><span>{preferences.editorFontSize}px</span></label></div>
           <h3 className="settings-group-label">Session</h3>
           <div className="setting-row"><div><strong>Restore document</strong><span>Reopen the last viewed document when Vellum starts.</span></div><label className="switch"><input aria-label="Restore previous document" type="checkbox" checked={preferences.rememberDocument} onChange={(event) => setPreferences((current) => ({ ...current, rememberDocument: event.target.checked }))} /><span aria-hidden="true" /></label></div>
-          <div className="setting-row"><div><strong>Reset appearance</strong><span>Restore Vellum's default interface, reading, and editor settings.</span></div><button type="button" className="reset-button" onClick={() => setPreferences(defaultPreferences)}><RefreshCw size={14} /> Reset</button></div>
+          <div className="setting-row"><div><strong>Reset appearance</strong><span>Restore Vellum's default scale, reading, editor, and theme settings.</span></div><button type="button" className="reset-button" onClick={() => setPreferences(defaultPreferences)}><RefreshCw size={14} /> Reset</button></div>
         </section>
       </dialog>
     </main>
