@@ -1,102 +1,41 @@
+.editor-shell,
 .source-editor {
-  --editor-font-size: 14px;
-  --editor-font-family: "Cascadia Code", Consolas, monospace;
   position: absolute;
   inset: 0;
   overflow: hidden;
   background: var(--page-bg, transparent);
 }
 
-.editor-highlight,
-.editor-input {
-  position: absolute;
-  inset: 0;
-  box-sizing: border-box;
-  width: 100%;
+.source-editor .cm-editor {
   height: 100%;
-  margin: 0;
-  border: 0;
-  padding: 74px 30px 42px;
-  overflow: auto;
-  font-family: var(--editor-font-family);
-  font-size: var(--editor-font-size);
-  line-height: 1.62;
-  tab-size: 2;
-  letter-spacing: 0;
 }
 
-.editor-highlight {
-  pointer-events: none;
-  color: var(--text-primary);
-  background: transparent;
+.source-editor .cm-scroller {
+  overscroll-behavior: contain;
 }
 
-.editor-input {
-  z-index: 1;
-  resize: none;
-  color: transparent;
-  caret-color: var(--text-primary);
-  background: transparent;
-  outline: none;
-  -webkit-text-fill-color: transparent;
+.source-editor .cm-content {
+  box-sizing: border-box;
 }
 
-.source-editor.wrap .editor-highlight,
-.source-editor.wrap .editor-input {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.source-editor .cm-panels {
+  position: fixed;
+  z-index: 40;
 }
 
-.source-editor.nowrap .editor-highlight,
-.source-editor.nowrap .editor-input {
-  white-space: pre;
-  overflow-wrap: normal;
+.source-editor .cm-search label {
+  font-size: 0;
 }
 
-.editor-input::selection {
-  background: color-mix(in srgb, var(--text-primary) 24%, transparent);
-  -webkit-text-fill-color: transparent;
+.source-editor .cm-search label::before {
+  content: "Find";
+  margin-right: 6px;
+  font-size: 11px;
+  opacity: .62;
 }
 
-.editor-search {
-  position: absolute;
-  z-index: 4;
-  top: 58px;
-  right: 24px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px;
-  border: 1px solid var(--vellum-control-border);
-  border-radius: 10px;
-  color: var(--vellum-control-fg);
-  background: var(--vellum-control-bg-hover);
-  box-shadow: var(--vellum-control-shadow);
-  backdrop-filter: blur(14px) saturate(120%);
-}
-
-.editor-search input {
-  width: 180px;
-  height: 28px;
-  border: 0;
-  border-radius: 6px;
-  padding: 0 8px;
-  color: inherit;
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  outline: none;
-}
-
-.editor-search button {
-  min-width: 30px;
-  height: 28px;
-  border: 0;
-  border-radius: 6px;
-  color: inherit;
-  background: transparent;
-}
-
-.editor-search button:hover {
-  background: color-mix(in srgb, currentColor 10%, transparent);
+.source-editor .cm-search .name {
+  display: none;
 }
 
 .editor-controls-hotspot {
@@ -167,39 +106,25 @@
   opacity: .38;
 }
 
-.editor-mode-hotspot {
-  position: absolute;
-  z-index: 29;
-  top: 0;
-  right: 112px;
-  display: flex;
-  width: 164px;
-  height: 66px;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 10px;
+.editor-controls select {
+  max-width: 145px;
+  appearance: auto;
 }
 
 .editor-mode-toggle {
+  position: absolute;
+  z-index: 29;
+  top: 12px;
+  right: 138px;
   display: flex;
   height: 34px;
   padding: 2px;
-  opacity: 0;
-  pointer-events: none;
   border: 1px solid var(--vellum-control-border);
   border-radius: 10px;
   color: var(--vellum-control-fg);
   background: var(--vellum-control-bg);
   box-shadow: var(--vellum-control-shadow);
   backdrop-filter: blur(14px) saturate(120%);
-  transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease;
-}
-
-.editor-mode-hotspot:hover .editor-mode-toggle,
-.editor-mode-toggle:focus-within {
-  opacity: 1;
-  pointer-events: auto;
-  background: var(--vellum-control-bg-hover);
 }
 
 .editor-mode-toggle button {
@@ -211,6 +136,8 @@
   opacity: .62;
 }
 
+.editor-mode-toggle button:hover,
+.editor-mode-toggle button:focus-visible,
 .editor-mode-toggle button.active {
   opacity: 1;
   background: color-mix(in srgb, currentColor 11%, transparent);
@@ -224,34 +151,6 @@
   border-radius: 50%;
   background: currentColor;
 }
-
-.tok-heading { color: #9c6b38; font-weight: 650; }
-.tok-code { color: #7b5f9e; }
-.tok-strong { color: #8b5d2e; font-weight: 650; }
-.tok-link { color: #3d6f8f; }
-.tok-marker { color: #a06c36; }
-.tok-quote { color: #6d7c67; }
-.tok-comment { color: #78806f; font-style: italic; }
-.tok-tag { color: #8b4f45; }
-.tok-attr { color: #8a6b32; }
-.tok-string { color: #4f7556; }
-.tok-keyword { color: #75569a; font-weight: 600; }
-.tok-number { color: #98613d; }
-.tok-css-property { color: #3f7382; }
-
-[data-theme="dark"] .tok-heading { color: #d3a36d; }
-[data-theme="dark"] .tok-code { color: #c1a4df; }
-[data-theme="dark"] .tok-strong { color: #e0ad76; }
-[data-theme="dark"] .tok-link { color: #82b4d0; }
-[data-theme="dark"] .tok-marker { color: #d0a064; }
-[data-theme="dark"] .tok-quote { color: #9eae96; }
-[data-theme="dark"] .tok-comment { color: #8f9a86; }
-[data-theme="dark"] .tok-tag { color: #dda097; }
-[data-theme="dark"] .tok-attr { color: #d0b272; }
-[data-theme="dark"] .tok-string { color: #9bc39f; }
-[data-theme="dark"] .tok-keyword { color: #c5a4e3; }
-[data-theme="dark"] .tok-number { color: #d59b77; }
-[data-theme="dark"] .tok-css-property { color: #83b6c2; }
 
 .sidebar-section.recent-section {
   min-height: 0;
@@ -268,9 +167,35 @@
 }
 
 @media (hover: none) {
-  .editor-controls,
-  .editor-mode-toggle {
+  .editor-controls {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .tree-pin {
+    opacity: .72;
+  }
+}
+
+@media (max-width: 760px) {
+  .editor-controls-hotspot {
+    left: 18px;
+    width: calc(100% - 170px);
+    transform: none;
+    justify-content: flex-start;
+  }
+
+  .editor-controls select {
+    display: none;
+  }
+
+  .editor-mode-toggle {
+    right: 112px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-controls {
+    transition: none;
   }
 }
