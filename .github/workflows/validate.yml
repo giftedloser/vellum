@@ -25,7 +25,14 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
+
+      - name: Upload generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-package-lock
+          path: package-lock.json
+          retention-days: 7
 
       - name: Build frontend
         id: frontend-build
@@ -56,6 +63,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
 
       - name: Audit production JavaScript dependencies
         run: npm audit --omit=dev --audit-level=high
@@ -113,7 +123,7 @@ jobs:
           workspaces: src-tauri
 
       - name: Install JavaScript dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Generate native icons
         run: npm run icons
@@ -160,7 +170,7 @@ jobs:
           workspaces: src-tauri
 
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Build Windows release executable
         run: npm run tauri -- build --no-bundle
