@@ -109,7 +109,7 @@ Resolution:
 - Reduced-motion support and visible keyboard focus.
 - Sanitized Markdown insertion.
 - Persistent library, recent history, preferences, sidebar state, and optional tabs.
-- One canonical SVG brand mark used by the UI, README, favicon, and native icon pipeline.
+- Canonical dark and light PNG brand sources used by the README, theme-aware favicons, and generated native icon pipeline.
 - Edge-to-edge HTML canvas with hidden application controls.
 
 ## Remaining validation

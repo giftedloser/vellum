@@ -4,12 +4,12 @@ import { mkdir } from "node:fs/promises";
 import process from "node:process";
 import sharp from "sharp";
 
-const source = "public/vellum-mark.svg";
+const source = "public/vellum-icon-dark.png";
 const iconDirectory = "src-tauri/icons";
 const rasterSource = `${iconDirectory}/icon-source.png`;
 
 await mkdir(iconDirectory, { recursive: true });
-await sharp(source, { density: 384 })
+await sharp(source)
   .resize(1024, 1024, { fit: "contain" })
   .png({ compressionLevel: 9, adaptiveFiltering: true })
   .toFile(rasterSource);

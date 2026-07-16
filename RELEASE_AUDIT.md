@@ -23,6 +23,7 @@ Vellum now supports optional source editing for Markdown and HTML while remainin
 - Editor text size and installed code-font preference are persisted.
 - Editor colors react to Vellum's resolved light or dark theme.
 - Editor controls use the same translucent floating-control visual language as the renderer controls.
+- Window and document controls share hover/focus visibility, fade together when idle, and can be kept visible from Settings.
 - No language server, formatter, linter, project model, extension system, terminal, AI service, autocomplete suggestion UI, or autosave system was added.
 
 ### Save behavior
@@ -54,13 +55,14 @@ The audit specifically verified that the following systems remain represented in
 - persistent added-root authorization and restoration;
 - interface scale;
 - sidebar transparency;
+- sidebar motion and floating-control visibility;
 - viewer zoom;
 - Markdown reading width, text scale, and line spacing;
 - HTML Fit-to-Width measurement;
 - operating-system light/dark theme reaction;
 - frameless window controls and drag region;
-- hidden floating viewer controls;
-- application and iframe context menus;
+- linked, auto-hiding floating viewer and window controls;
+- theme-aware application and iframe context menus with clipped, scrollbar-free overflow hints;
 - `Ctrl/Cmd+O`, `Shift+Ctrl/Cmd+O`, `Ctrl/Cmd+B`, `Ctrl/Cmd+R`, `Ctrl/Cmd+W`, and `Ctrl/Cmd+,`;
 - request-token protection against stale asynchronous document reads;
 - sandboxed HTML and sanitized Markdown rendering;
@@ -112,7 +114,7 @@ Effects are limited to external synchronization and subscriptions:
 - synchronizing viewer zoom into the sandboxed iframe;
 - creating and cleaning up the custom scroll indicator.
 
-The document-opening callback is stable and reads current roots and dirty state through refs. Changing sidebar contents or typing in the editor therefore cannot re-run startup restoration or reopen the active file.
+The document-opening callback is stable and reads current roots and dirty state through refs. Changing sidebar contents or typing in the editor therefore cannot re-run startup restoration or reopen the active file. The restore-document preference is captured at startup, so changing it in Settings affects the next launch without rescanning roots or reopening a document in the current session.
 
 The two optimization opportunities documented in the previous audit are now corrected:
 
@@ -128,7 +130,7 @@ The CodeMirror component owns one editor view while mounted. Compartments reconf
 - Only one document body and one editable draft are retained at a time.
 - The CodeMirror editor chunk is code-split and not requested during normal viewing.
 - Only the required CodeMirror modules are installed; no IDE package or language-server runtime is present.
-- Parser-backed highlighting is incremental rather than rerunning whole-document regular expressions after each keystroke.
+- Parser-backed highlighting is incremental, and Markdown block-level presentation decorates only visible lines rather than rescanning the entire document after each keystroke.
 - Editor visual settings are reconfigured through compartments instead of remounting the editor.
 - Previous document and editor content becomes collectible when replaced.
 - Asynchronous document opens use a monotonically increasing request token.
@@ -143,7 +145,9 @@ The largest expected memory consumer remains the platform WebView, followed by t
 
 ## UI and accessibility review
 
-- Existing viewer and window-control placement remains unchanged.
+- Window controls remain inset at the top-right and share the document bar's corner geometry.
+- Context menus use theme-aware surfaces and remain inside an eight-pixel viewport gutter, including at bottom-right clicks.
+- The paper background is painted once at the window level, so sidebar motion reflows content without shifting the texture.
 - Editor controls reuse existing control variables, borders, shadows, blur, sizing, and motion timing.
 - View/Edit state is visible and exposes an unsaved indicator.
 - Icon-only controls have labels or titles.
@@ -193,4 +197,4 @@ The CodeMirror dependency graph is committed in `package-lock.json`, and CI uses
 
 ## Conclusion
 
-The clean 0.2.0 branch adds the approved editing and sidebar scope without replacing the established application architecture. The repository-level security, lifecycle, memory, dependency, and UI findings are addressed in code. The branch remains draft and unmerged until the manual Windows/UI smoke test is performed.
+The clean 0.2.0 implementation adds the approved editing, sidebar, branding, and control-system scope without replacing the established application architecture. Repository-level security, lifecycle, memory, dependency, and UI findings are addressed in code. Installer signing and clean-machine smoke testing remain release-environment work.

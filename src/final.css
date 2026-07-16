@@ -19,28 +19,27 @@
   background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
+.app-shell,
 .sidebar,
-.settings-panel,
-.main-pane,
-.content-area,
-.welcome,
-.document {
+.settings-panel {
   background-image:
     radial-gradient(ellipse at 50% 0%, transparent 35%, var(--paper-vignette) 100%),
     linear-gradient(var(--paper-wash), var(--paper-wash)),
     url("/textures/grain.png");
   background-repeat: no-repeat, no-repeat, repeat;
   background-size: 100% 100%, 100% 100%, 1024px 1024px;
+  background-attachment: fixed, fixed, fixed;
   background-blend-mode: normal, normal, var(--paper-blend);
 }
 
+.app-shell { background-color: var(--surface); }
 .main-pane,
-.content-area {
-  background-color: var(--surface);
-}
+.content-area,
+.welcome,
+.document { background: transparent; }
 
 .sidebar {
-  transition: opacity var(--motion-standard) ease, visibility var(--motion-standard) ease;
+  transition: width var(--sidebar-motion) var(--sidebar-ease);
 }
 
 .sidebar button,
@@ -52,9 +51,33 @@
 /* Root rows have a label plus two actions; keep all three cells on one line. */
 .tree-row-wrap {
   position: relative;
-  grid-template-columns: minmax(0, 1fr) 25px 25px;
+  grid-template-columns: minmax(0, 1fr);
   min-height: 25px;
   transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+
+.tree-row-wrap.root-row {
+  grid-template-columns: minmax(0, 1fr) 25px 25px;
+}
+
+.tree-row-wrap.pinnable-row {
+  grid-template-columns: minmax(0, 1fr) 25px;
+}
+
+.tree-row {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tree-label {
+  min-width: 0;
+  flex: 1;
+}
+
+.tree-remove {
+  align-self: center;
+  flex: none;
 }
 
 .tree-row-wrap .tree-remove {
@@ -86,24 +109,90 @@
   font-weight: 610;
 }
 
-/* Keep the footer quiet: add, appearance, settings, collapse. Secondary add actions live in menus. */
+/* Keep the footer aligned: add, appearance, settings, collapse. */
 .sidebar-command-bar {
-  justify-content: flex-start;
-  gap: 2px;
-}
-
-.sidebar-command-bar button:nth-child(2),
-.sidebar-command-bar button:nth-child(3),
-.sidebar-command-bar button:nth-child(4) {
-  display: none;
-}
-
-.sidebar-command-bar button:last-child {
-  margin-left: auto;
+  position: relative;
+  gap: 0;
 }
 
 .sidebar-command-bar button:hover {
   box-shadow: none;
+}
+
+.sidebar-command-bar button.active {
+  color: var(--text);
+  background: var(--active);
+}
+
+.sidebar-add-menu {
+  position: fixed;
+  z-index: 72;
+  bottom: 56px;
+  left: 8px;
+  width: 240px;
+  padding: 6px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: 13px;
+  box-shadow: 0 18px 55px rgba(20, 16, 8, .24), 0 2px 8px rgba(20, 16, 8, .10);
+  backdrop-filter: blur(22px) saturate(120%);
+  animation: menu-in var(--motion-fast) ease both;
+}
+
+.sidebar-add-menu button {
+  width: 100%;
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 9px;
+  padding: 5px 8px;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+  transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, transform 80ms ease;
+}
+
+.sidebar-add-menu button:hover,
+.sidebar-add-menu button:focus-visible {
+  outline: none;
+  background: var(--hover);
+}
+
+.sidebar-add-menu button:active {
+  transform: scale(.96);
+}
+
+.sidebar-add-menu button > svg {
+  justify-self: center;
+  color: var(--muted);
+}
+
+.sidebar-add-menu button > span {
+  display: grid;
+  gap: 2px;
+}
+
+.sidebar-add-menu strong {
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.sidebar-add-menu small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sidebar-add-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
 }
 
 .welcome-actions button:hover,
@@ -162,15 +251,17 @@
 .error-banner button:hover { background: rgba(255,255,255,.18); }
 
 .welcome-shortcuts {
-  margin-top: 22px;
+  display: flex;
+  gap: 16px;
+  margin-top: 20px;
   color: color-mix(in srgb, var(--muted) 78%, transparent);
   font-size: 10px;
   letter-spacing: .015em;
 }
 
-.welcome-shortcuts span { margin: 0 5px; }
+.welcome-shortcuts span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .welcome-shortcuts kbd {
-  padding: 2px 5px;
+  padding: 2px 6px;
   border: 1px solid var(--border);
   border-bottom-color: var(--border-strong);
   border-radius: 5px;
@@ -254,6 +345,10 @@
 @keyframes panel-in { from { opacity: 0; transform: translateY(7px) scale(.99); } }
 @keyframes view-in { from { opacity: 0; transform: translateY(2px); } }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-2px) scale(.985); } }
+@keyframes floating-controls-idle {
+  0%, 72% { opacity: 1; transform: translateY(0); }
+  100% { opacity: .14; transform: translateY(5px); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -262,9 +357,18 @@
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
+
+  /* The sidebar's motion is an explicit application behavior, not decoration. */
+  .sidebar { transition-duration: var(--sidebar-motion) !important; }
+  .brand-rest { transition-duration: var(--sidebar-motion), var(--sidebar-motion), var(--sidebar-motion) !important; }
+  .sidebar-section { transition-duration: 320ms, var(--sidebar-motion), 0s !important; }
+  .sidebar-controls::before { transition-duration: 260ms !important; }
+  .sidebar-command-bar button { transition-duration: var(--sidebar-motion), var(--sidebar-motion), .01ms, .01ms, 80ms !important; }
 }
 
 @media (max-width: 760px) {
+  .sidebar { width: 232px; }
+  .sidebar-collapsed .sidebar { width: 52px; }
   .welcome-shortcuts { display: none; }
   .settings-panel { width: calc(100% - 24px); padding-inline: 18px; }
 }

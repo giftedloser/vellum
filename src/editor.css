@@ -1,21 +1,21 @@
 :root {
-  --editor-control-bg: rgba(255, 254, 250, .92);
-  --editor-control-bg-hover: rgba(255, 255, 255, .98);
-  --editor-control-border: rgba(80, 72, 56, .18);
-  --editor-control-divider: rgba(80, 72, 56, .12);
-  --editor-control-fg: rgba(43, 39, 32, .78);
-  --editor-control-fg-strong: #1d1b17;
+  --editor-control-bg: rgba(var(--panel-rgb), .82);
+  --editor-control-bg-hover: rgba(var(--panel-rgb), .96);
+  --editor-control-border: var(--border);
+  --editor-control-divider: var(--border);
+  --editor-control-fg: var(--muted);
+  --editor-control-fg-strong: var(--text);
   --editor-control-shadow: 0 8px 28px rgba(45, 39, 28, .14), 0 1px 3px rgba(45, 39, 28, .10);
   --editor-select-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --editor-control-bg: rgba(22, 22, 20, .90);
-  --editor-control-bg-hover: rgba(14, 14, 13, .97);
-  --editor-control-border: rgba(255, 255, 255, .14);
-  --editor-control-divider: rgba(255, 255, 255, .10);
-  --editor-control-fg: rgba(255, 255, 255, .82);
-  --editor-control-fg-strong: #fff;
+  --editor-control-bg: rgba(var(--panel-rgb), .82);
+  --editor-control-bg-hover: rgba(var(--panel-rgb), .96);
+  --editor-control-border: var(--border);
+  --editor-control-divider: var(--border);
+  --editor-control-fg: var(--muted);
+  --editor-control-fg-strong: var(--text);
   --editor-control-shadow: 0 8px 28px rgba(0, 0, 0, .28), 0 1px 3px rgba(0, 0, 0, .22);
   --editor-select-scheme: dark;
 }
@@ -42,6 +42,23 @@
   box-sizing: border-box;
 }
 
+.source-editor .cm-md-h1,
+.source-editor .cm-md-h2,
+.source-editor .cm-md-h3,
+.source-editor .cm-md-heading {
+  padding-top: .45em;
+  padding-bottom: .18em;
+  line-height: 1.45;
+}
+
+.source-editor .cm-md-h1 { font-size: 1.55em; }
+.source-editor .cm-md-h2 { font-size: 1.32em; }
+.source-editor .cm-md-h3 { font-size: 1.16em; }
+.source-editor .cm-md-quote { padding-block: .24em; padding-left: 10px; border-left: 2px solid var(--accent-soft); }
+.source-editor .cm-md-list { padding-block: .1em; }
+.source-editor .cm-md-fence { margin-top: .35em; color: var(--muted); }
+.source-editor .cm-md-blank { min-height: .85em; }
+
 .source-editor .cm-panels {
   position: fixed;
   z-index: 40;
@@ -62,14 +79,15 @@
   display: none;
 }
 
-/* Editing uses the same bottom activation zone and expands from the mode pill. */
-.editor-controls-hotspot {
+/* One stable document bar; only its mode-specific tools change. */
+.document-controls-wrap {
   position: absolute;
   z-index: 31;
   bottom: 0;
   left: 50%;
-  width: min(760px, calc(100% - 24px));
-  height: 116px;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  height: 72px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -78,162 +96,196 @@
   pointer-events: auto;
 }
 
-.editor-controls {
+.document-controls {
   display: flex;
   align-items: center;
-  height: 38px;
-  margin-left: 20px;
-  padding: 2px;
-  overflow: hidden;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
+  min-height: 48px;
+  max-width: 100%;
+  padding: 3px;
+  overflow: visible;
   color: var(--editor-control-fg);
   background: var(--editor-control-bg);
   border: 1px solid var(--editor-control-border);
-  border-radius: 11px;
+  border-radius: 13px;
   box-shadow: var(--editor-control-shadow);
   backdrop-filter: blur(14px) saturate(120%);
   -webkit-backdrop-filter: blur(14px) saturate(120%);
-  transform: translateY(5px) scale(.97);
-  transition:
-    opacity 150ms ease 240ms,
-    visibility 0s linear 390ms,
-    transform 170ms ease 240ms,
-    background-color 140ms ease,
-    border-color 140ms ease;
-}
-
-.editor-controls-hotspot:hover .editor-controls,
-.editor-controls:focus-within {
-  visibility: visible;
-  opacity: 1;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
-  transition-delay: 35ms, 0s, 35ms, 0s, 0s;
-  background: var(--editor-control-bg-hover);
-  border-color: var(--editor-control-border);
+  animation: floating-controls-idle 1.8s cubic-bezier(.2, 0, 0, 1) both;
 }
 
-.editor-controls button,
-.editor-controls select {
-  height: 32px;
+.document-controls-wrap:hover .document-controls,
+.document-controls:focus-within {
+  opacity: 1;
+  transform: translateY(0);
+  animation: none;
+}
+
+.app-shell:has(.window-controls-hotspot:hover, .document-controls-wrap:hover, .window-controls:focus-within, .document-controls:focus-within) .window-controls,
+.app-shell:has(.window-controls-hotspot:hover, .document-controls-wrap:hover, .window-controls:focus-within, .document-controls:focus-within) .document-controls {
+  opacity: 1;
+  transform: translateY(0);
+  animation: none;
+}
+
+.controls-always-visible .document-controls {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+
+.document-controls button,
+.document-controls select {
+  flex: none;
+  height: 36px;
   min-width: 36px;
   border: 0;
-  border-left: 1px solid var(--editor-control-divider);
+  border-radius: 9px;
   padding: 0 9px;
   color: var(--editor-control-fg);
   background: transparent;
   font: inherit;
+  transition: color 120ms ease, background-color 120ms ease, transform 80ms ease;
 }
 
-.editor-controls > :first-child {
-  border-left: 0;
-}
-
-.editor-controls button:hover:not(:disabled),
-.editor-controls select:hover,
-.editor-controls button.active {
-  color: var(--editor-control-fg-strong);
-  background: color-mix(in srgb, currentColor 9%, transparent);
-}
-
-.editor-controls button:disabled {
-  color: color-mix(in srgb, var(--editor-control-fg) 42%, transparent);
-  opacity: 1;
-}
-
-.editor-controls select {
-  max-width: 132px;
-  color-scheme: var(--editor-select-scheme);
-}
-
-/* The resting state is one small centered View/Edit pill. */
-.editor-mode-toggle {
-  position: absolute;
-  z-index: 33;
-  bottom: 12px;
-  left: 50%;
-  display: flex;
-  height: 38px;
-  transform: translateX(-50%);
-  padding: 2px;
-  color: var(--editor-control-fg);
-  background: var(--editor-control-bg);
-  border: 1px solid var(--editor-control-border);
-  border-radius: 999px;
-  box-shadow: var(--editor-control-shadow);
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
-  opacity: .76;
-  transition:
-    opacity 150ms ease 220ms,
-    transform 180ms cubic-bezier(.2,.8,.2,1) 220ms,
-    background-color 140ms ease,
-    border-radius 160ms ease 220ms;
-}
-
-.main-pane:has(.viewer-zoom-hotspot:hover) .editor-mode-toggle,
-.main-pane:has(.viewer-zoom-controls:focus-within) .editor-mode-toggle {
-  opacity: 1;
-  transform: translateX(calc(-50% - 106px));
-  border-radius: 11px;
-  background: var(--editor-control-bg-hover);
-  transition-delay: 35ms, 35ms, 0s, 35ms;
-}
-
-.main-pane:has(.editor-controls-hotspot:hover) .editor-mode-toggle,
-.main-pane:has(.editor-controls:focus-within) .editor-mode-toggle {
-  opacity: 1;
-  transform: translateX(calc(-50% - 228px));
-  border-radius: 11px;
-  background: var(--editor-control-bg-hover);
-  transition-delay: 35ms, 35ms, 0s, 35ms;
-}
-
-.editor-mode-toggle:hover,
-.editor-mode-toggle:focus-within {
-  opacity: 1;
-  background: var(--editor-control-bg-hover);
-  transition-delay: 0s;
-}
-
-.editor-mode-toggle button {
-  display: none;
-  min-width: 48px;
-  height: 32px;
-  border: 0;
-  border-radius: 999px;
-  padding: 0 11px;
-  color: var(--editor-control-fg);
-  background: transparent;
-  font-size: 10px;
-  font-weight: 650;
-}
-
-.editor-mode-toggle button:not(.active) {
+.document-controls button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.editor-mode-toggle button:hover,
-.editor-mode-toggle button:focus-visible {
+.document-controls button:hover:not(:disabled),
+.font-picker summary:hover,
+.document-controls button.active {
   color: var(--editor-control-fg-strong);
   background: color-mix(in srgb, currentColor 9%, transparent);
 }
 
-/* Preserve dirty-state visibility even though the active mode button is hidden. */
-.editor-mode-toggle:has(.unsaved-dot)::after {
-  content: "";
+.document-controls button:active:not(:disabled) {
+  transform: scale(.96);
+}
+
+.document-controls button:focus-visible,
+.font-picker summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--editor-control-fg-strong) 64%, transparent);
+  outline-offset: -2px;
+}
+
+.document-controls button:disabled {
+  color: color-mix(in srgb, var(--editor-control-fg) 38%, transparent);
+  opacity: 1;
+}
+
+.document-controls .zoom-value {
+  min-width: 48px;
+  font-size: 10px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.font-picker {
+  position: relative;
+  flex: 0 1 160px;
+  min-width: 128px;
+  width: 160px;
+}
+
+.font-picker summary {
+  width: 100%;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 12px;
+  border-radius: 9px;
+  font-size: 11px;
+  color: var(--editor-control-fg-strong);
+  background-color: color-mix(in srgb, var(--editor-control-fg) 7%, transparent);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.font-picker summary::-webkit-details-marker {
+  display: none;
+}
+
+.font-picker summary svg {
+  flex: none;
+  transition: transform 120ms ease;
+}
+
+.font-picker summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-picker[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.font-picker-menu {
   position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--editor-control-fg-strong);
-  box-shadow: 0 0 0 2px var(--editor-control-bg);
+  bottom: calc(100% + 7px);
+  right: 0;
+  width: max(100%, 160px);
+  padding: 4px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: 11px;
+  box-shadow: var(--editor-control-shadow);
+  backdrop-filter: blur(14px) saturate(120%);
+  overflow: hidden;
+}
+
+.font-picker-menu button {
+  width: 100%;
+  height: 32px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  color: var(--text);
+  background: transparent;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.font-picker-menu button:hover:not(:disabled),
+.font-picker-menu button.active {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.document-mode-toggle {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  background: color-mix(in srgb, var(--editor-control-fg) 7%, transparent);
+  border-radius: 10px;
+}
+
+.document-mode-toggle button {
+  min-width: 50px;
+  height: 36px;
+  padding: 0 11px;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.document-mode-toggle button.active {
+  color: var(--editor-control-fg-strong);
+  background: var(--editor-control-bg-hover);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--editor-control-fg-strong) 12%, transparent);
+}
+
+.control-divider {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 4px;
+  background: var(--editor-control-divider);
 }
 
 .unsaved-dot {
@@ -260,37 +312,19 @@
 }
 
 @media (hover: none) {
-  .editor-controls {
-    visibility: visible;
-    opacity: 1;
-    pointer-events: auto;
-    transform: none;
-    transition-delay: 0s;
-  }
-
-  .editor-mode-toggle {
-    opacity: 1;
-  }
-
   .tree-pin {
     opacity: .72;
   }
 }
 
-@media (max-width: 760px) {
-  .editor-controls select {
+@media (max-width: 900px) {
+  .font-picker {
     display: none;
-  }
-
-  .main-pane:has(.editor-controls-hotspot:hover) .editor-mode-toggle,
-  .main-pane:has(.editor-controls:focus-within) .editor-mode-toggle {
-    transform: translateX(calc(-50% - 162px));
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .editor-controls,
-  .editor-mode-toggle {
+  .document-controls {
     background: var(--surface-strong);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -298,8 +332,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .editor-controls,
-  .editor-mode-toggle {
+  .document-controls {
+    animation-duration: 1.8s !important;
+  }
+
+  .document-controls button,
+  .font-picker summary {
     transition: none;
   }
 }

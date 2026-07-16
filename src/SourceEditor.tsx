@@ -5,8 +5,8 @@ import { html } from "@codemirror/lang-html";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState } from "@codemirror/state";
-import { drawSelection, dropCursor, EditorView, keymap } from "@codemirror/view";
+import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
+import { Decoration, drawSelection, dropCursor, EditorView, keymap, type DecorationSet, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
 type Props = {
@@ -22,8 +22,44 @@ function resolvedDarkTheme() {
   return document.documentElement.dataset.theme === "dark";
 }
 
+function markdownLineClass(text: string) {
+  if (/^#\s/.test(text)) return "cm-md-h1";
+  if (/^##\s/.test(text)) return "cm-md-h2";
+  if (/^###\s/.test(text)) return "cm-md-h3";
+  if (/^#{4,6}\s/.test(text)) return "cm-md-heading";
+  if (/^\s*>\s?/.test(text)) return "cm-md-quote";
+  if (/^\s*(```|~~~)/.test(text)) return "cm-md-fence";
+  if (/^\s*(?:[-+*]|\d+[.)])\s+/.test(text)) return "cm-md-list";
+  return text.trim() ? "cm-md-body" : "cm-md-blank";
+}
+
+function visibleMarkdownDecorations(view: EditorView) {
+  const decorations = new RangeSetBuilder<Decoration>();
+  for (const range of view.visibleRanges) {
+    let position = range.from;
+    while (position <= range.to) {
+      const line = view.state.doc.lineAt(position);
+      decorations.add(line.from, line.from, Decoration.line({ class: markdownLineClass(line.text) }));
+      position = line.to + 1;
+    }
+  }
+  return decorations.finish();
+}
+
+const markdownBlockStyles = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+
+  constructor(view: EditorView) {
+    this.decorations = visibleMarkdownDecorations(view);
+  }
+
+  update(update: ViewUpdate) {
+    if (update.docChanged || update.viewportChanged) this.decorations = visibleMarkdownDecorations(update.view);
+  }
+}, { decorations: (plugin) => plugin.decorations });
+
 function languageExtension(language: Props["language"]) {
-  return language === "html" ? html({ autoCloseTags: false }) : markdown();
+  return language === "html" ? html({ autoCloseTags: false }) : [markdown(), markdownBlockStyles];
 }
 
 function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
@@ -71,10 +107,10 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
       ".cm-scroller::-webkit-scrollbar": { display: "none" },
       ".cm-content": {
         minHeight: "100%",
-        padding: "74px 30px 42px",
+        padding: "74px 30px 88px",
         caretColor: palette.foreground,
       },
-      ".cm-line": { padding: "0" },
+      ".cm-line": { padding: "1px 0" },
       ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
         backgroundColor: `${palette.selection} !important`,
       },
@@ -124,14 +160,18 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
       "&.cm-focused": { outline: "none" },
     }, { dark }),
     syntaxHighlighting(HighlightStyle.define([
-      { tag: [tags.heading1, tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6], color: palette.heading, fontWeight: "650" },
+      { tag: tags.heading1, color: palette.heading, fontWeight: "700" },
+      { tag: tags.heading2, color: palette.heading, fontWeight: "700" },
+      { tag: tags.heading3, color: palette.heading, fontWeight: "680" },
+      { tag: [tags.heading4, tags.heading5, tags.heading6], color: palette.heading, fontWeight: "680" },
       { tag: [tags.keyword, tags.tagName], color: palette.keyword },
       { tag: [tags.attributeName, tags.propertyName], color: palette.attribute },
       { tag: [tags.string, tags.url], color: palette.string },
-      { tag: [tags.link, tags.processingInstruction], color: palette.link },
+      { tag: [tags.link, tags.processingInstruction], color: palette.link, textDecoration: "underline", textUnderlineOffset: "2px" },
       { tag: [tags.monospace, tags.regexp], color: palette.code },
       { tag: [tags.comment, tags.quote], color: palette.muted, fontStyle: "italic" },
-      { tag: [tags.strong, tags.emphasis], fontWeight: "650" },
+      { tag: tags.strong, fontWeight: "750" },
+      { tag: tags.emphasis, fontStyle: "italic" },
       { tag: tags.invalid, textDecoration: "underline wavy" },
     ])),
   ];
@@ -142,18 +182,24 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
   const view = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const applyingExternal = useRef(false);
-  const languageConfig = useRef(new Compartment()).current;
-  const wrapConfig = useRef(new Compartment()).current;
-  const themeConfig = useRef(new Compartment()).current;
-  const dark = useRef(resolvedDarkTheme());
+  const initialConfig = useRef({ value, language, wrap, fontSize, fontFamily }).current;
+  const languageConfigRef = useRef<Compartment>(null);
+  const wrapConfigRef = useRef<Compartment>(null);
+  const themeConfigRef = useRef<Compartment>(null);
+  if (languageConfigRef.current === null) languageConfigRef.current = new Compartment();
+  if (wrapConfigRef.current === null) wrapConfigRef.current = new Compartment();
+  if (themeConfigRef.current === null) themeConfigRef.current = new Compartment();
+  const languageConfig = languageConfigRef.current;
+  const wrapConfig = wrapConfigRef.current;
+  const themeConfig = themeConfigRef.current;
 
-  onChangeRef.current = onChange;
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   useEffect(() => {
     if (!host.current) return;
 
     const state = EditorState.create({
-      doc: value,
+      doc: initialConfig.value,
       extensions: [
         history(),
         drawSelection(),
@@ -162,9 +208,9 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
         bracketMatching(),
         closeBrackets(),
         highlightSelectionMatches(),
-        languageConfig.of(languageExtension(language)),
-        wrapConfig.of(wrap ? EditorView.lineWrapping : []),
-        themeConfig.of(visualTheme(dark.current, fontSize, fontFamily)),
+        languageConfig.of(languageExtension(initialConfig.language)),
+        wrapConfig.of(initialConfig.wrap ? EditorView.lineWrapping : []),
+        themeConfig.of(visualTheme(resolvedDarkTheme(), initialConfig.fontSize, initialConfig.fontFamily)),
         keymap.of([
           ...closeBracketsKeymap,
           ...searchKeymap,
@@ -187,7 +233,7 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
       view.current?.destroy();
       view.current = null;
     };
-  }, []);
+  }, [initialConfig, languageConfig, themeConfig, wrapConfig]);
 
   useEffect(() => {
     const editor = view.current;
@@ -208,7 +254,6 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
   useEffect(() => {
     const applyTheme = () => {
       const nextDark = resolvedDarkTheme();
-      dark.current = nextDark;
       view.current?.dispatch({ effects: themeConfig.reconfigure(visualTheme(nextDark, fontSize, fontFamily)) });
     };
     applyTheme();

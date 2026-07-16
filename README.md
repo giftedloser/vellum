@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/vellum-mark.svg" width="128" height="128" alt="Vellum logo" />
+  <img src="public/vellum-icon-dark.png" width="128" height="128" alt="Vellum logo" />
 </p>
 
 <h1 align="center">Vellum</h1>
@@ -26,7 +26,7 @@ Vellum is intentionally restrained.
 
 ## Brand system
 
-The canonical source is `public/vellum-mark.svg`. Native assets are generated rather than edited separately, preventing platform icons from drifting away from the application identity.
+The canonical sources are `public/vellum-icon-dark.png` and `public/vellum-icon-light.png`. The browser selects a matching theme favicon, while native application and installer assets are generated from the dark icon so platform assets stay consistent.
 
 ```bash
 npm run icons
@@ -60,8 +60,10 @@ npm run tauri -- build
 - Remove-from-sidebar behavior that never deletes files from disk
 - Restore the most recently opened document optionally
 - Collapsible translucent sidebar with persistent state
+- Quick, balanced, and relaxed sidebar-motion settings
 - Custom frameless title bar and native window controls
 - System, light, and dark appearance modes with live OS-theme updates
+- Optional auto-hide for the linked window and document control surfaces
 - Adjustable interface scale, viewer zoom, Markdown reading width, text scale, and line height
 - Keyboard shortcuts for common actions
 - Reduced-motion support
@@ -176,7 +178,9 @@ GitHub Actions validates the frontend, dependency advisories, Rust/Tauri core, a
 
 ```text
 public/
-  vellum-mark.svg       Canonical vector identity and browser favicon
+  vellum-icon-*.png     Canonical dark and light application identities
+  favicon-*.png         Optimized theme-aware browser favicons
+  fonts/                Bundled Style Script application-title font
 scripts/
   generate-icons.mjs    Reproducible native icon generation
 src/
@@ -223,7 +227,7 @@ HTML files may contain scripts and remote resources. They run within the configu
 
 ## Release optimization
 
-The CodeMirror editor and language modules are lazy-loaded only when Edit mode is first opened. Normal viewer startup does not request or instantiate the editor chunk. CodeMirror compartments update wrapping, language, theme, font, and size without remounting the editor. Scroll-indicator geometry work is requestAnimationFrame-throttled, native interface zoom is updated only when interface scale changes, directory scans are bounded, and the Rust release profile uses whole-program link-time optimization, one code-generation unit, size-oriented optimization, stripped symbols, and abort-on-panic behavior.
+The CodeMirror editor and language modules are lazy-loaded only when Edit mode is first opened. Normal viewer startup does not request or instantiate the editor chunk. CodeMirror compartments update wrapping, language, theme, font, and size without remounting the editor, and Markdown block decoration is limited to visible lines. Scroll-indicator geometry work is requestAnimationFrame-throttled, native interface zoom is updated only when interface scale changes, directory scans are bounded, and the Rust release profile uses whole-program link-time optimization, one code-generation unit, size-oriented optimization, stripped symbols, and abort-on-panic behavior.
 
 ## Remaining release work
 
@@ -236,3 +240,5 @@ The CodeMirror editor and language modules are lazy-loaded only when Edit mode i
 ## License
 
 No license has been selected yet.
+
+The bundled Style Script font is licensed separately under the SIL Open Font License 1.1; see [`public/fonts/OFL.txt`](public/fonts/OFL.txt).
