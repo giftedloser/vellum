@@ -15,14 +15,15 @@ The implementation was restarted from `main` after an earlier draft replaced too
 Vellum now supports optional source editing for Markdown and HTML while remaining viewer-first.
 
 - View remains the default mode.
-- The editor is lazy-loaded only when Edit mode is opened.
-- Markdown and HTML receive lightweight local syntax highlighting.
+- CodeMirror 6 is lazy-loaded only when Edit mode is opened.
+- Only the required CodeMirror state, view, command, search, language, autocomplete-pairing, Markdown, and HTML modules are included.
+- Markdown and HTML receive parser-backed syntax highlighting.
 - Word wrap is enabled by default.
-- Search, native undo/redo, tab indentation, and bracket/quote pairing are available.
+- Search, undo/redo, tab indentation, bracket matching, and bracket/quote pairing are available.
 - Editor text size and installed code-font preference are persisted.
 - Editor colors react to Vellum's resolved light or dark theme.
 - Editor controls use the same translucent floating-control visual language as the renderer controls.
-- No editor framework, language server, formatter, linter, project model, extension system, terminal, AI service, or autosave system was added.
+- No language server, formatter, linter, project model, extension system, terminal, AI service, autocomplete suggestion UI, or autosave system was added.
 
 ### Save behavior
 
@@ -92,9 +93,9 @@ Authored HTML remains intentionally capable of running scripts and loading remot
 
 The application CSP is broader than a static viewer because `srcDoc` inherits the embedding document's policy. This remains the largest security tradeoff. A future release intended for routinely opening untrusted public HTML should move authored HTML into a dedicated custom protocol or isolated webview with its own policy.
 
-### Editor highlighting
+### Editor rendering
 
-The editor highlight layer escapes source text before adding local token spans. The editable textarea remains plain text; highlighted markup is never parsed back into the document. Markdown preview continues through `marked` followed by DOMPurify. HTML preview continues through the sandboxed iframe.
+CodeMirror renders source through its editor view and Lezer parser/highlighting system. Source remains text in editor state and is never converted into executable application markup. Markdown preview continues through `marked` followed by DOMPurify. HTML preview continues through the sandboxed iframe.
 
 ## React and lifecycle audit
 
@@ -120,22 +121,25 @@ The two optimization opportunities documented in the previous audit are now corr
 
 Keyboard handling continues to use `useEffectEvent`, preventing stale closures without repeatedly attaching the global listener. Native close protection also reads current dirty state from a ref and registers only once.
 
+The CodeMirror component owns one editor view while mounted. Compartments reconfigure language, wrapping, theme, font, and size without destroying cursor position or undo history. External Revert or file-state updates replace the document only when the controlled value differs from editor state.
+
 ## Memory and performance review
 
 - Only one document body and one editable draft are retained at a time.
-- The source editor is code-split and not instantiated during normal viewing.
-- No editor framework or additional runtime dependency was added.
-- Syntax highlighting is memoized by source content and language.
+- The CodeMirror editor chunk is code-split and not requested during normal viewing.
+- Only the required CodeMirror modules are installed; no IDE package or language-server runtime is present.
+- Parser-backed highlighting is incremental rather than rerunning whole-document regular expressions after each keystroke.
+- Editor visual settings are reconfigured through compartments instead of remounting the editor.
 - Previous document and editor content becomes collectible when replaced.
 - Asynchronous document opens use a monotonically increasing request token.
-- Event listeners, animation frames, timers, native event subscriptions, dialogs, and generated indicators have cleanup paths.
+- Event listeners, animation frames, timers, native event subscriptions, dialogs, generated indicators, MutationObservers, and the editor view have cleanup paths.
 - Recent history is capped at 30 roots.
 - Directory scans remain bounded and cycle-aware.
 - Markdown conversion is memoized and sanitized only when source or document type changes.
 - Prepared HTML is memoized by source and resolved theme.
 - The HTML iframe is keyed by document path.
 
-The largest expected memory consumer remains the platform WebView, not application state.
+The largest expected memory consumer remains the platform WebView, followed by the editor chunk only while Edit mode is used.
 
 ## UI and accessibility review
 
@@ -144,8 +148,8 @@ The largest expected memory consumer remains the platform WebView, not applicati
 - View/Edit state is visible and exposes an unsaved indicator.
 - Icon-only controls have labels or titles.
 - Settings continue to use a native modal dialog with cancel/close behavior.
-- Editor search uses a labeled search input and keyboard dismissal.
-- The source textarea has an explicit Markdown or HTML label.
+- CodeMirror search remains keyboard accessible and uses Vellum's floating material treatment.
+- The editor host has an explicit Markdown or HTML label.
 - Touch devices reveal editor controls without requiring hover.
 - Reduced-motion behavior remains inherited from the existing application styles.
 
@@ -160,7 +164,7 @@ CI validates:
 - native icon generation;
 - a Windows release executable build.
 
-No new JavaScript runtime dependency was introduced, so the existing lockfile dependency graph remains unchanged. Package and native release versions are 0.2.0; the lockfile's root-version metadata does not affect resolution but should be refreshed by the final local `npm install --package-lock-only` before tagging.
+The CodeMirror dependency graph is committed in `package-lock.json`, and CI uses deterministic `npm ci` installation. Package, lockfile, native crate, and Tauri bundle versions are all 0.2.0.
 
 ## Required manual smoke test
 
@@ -170,23 +174,23 @@ No new JavaScript runtime dependency was introduced, so the existing lockfile de
 4. Remove sidebar entries and confirm nothing is deleted from disk.
 5. Enter Edit mode for Markdown and HTML.
 6. Verify highlighting, wrap, search, undo/redo, tab indentation, pair insertion, font selection, and text sizing.
-7. Make an edit, switch to View, and confirm the unsaved preview updates.
-8. Save and reload the file from another application.
-9. Modify the file externally and confirm Vellum warns before overwrite.
-10. Test Save As and new Markdown/HTML creation.
-11. Attempt to switch files, close the document, and exit with unsaved changes.
-12. Recheck all previous viewer settings, zoom controls, Fit-to-Width, theme behavior, context menus, and session restoration.
-13. Build MSI and NSIS installers on Windows.
-14. Confirm file associations and startup opening on a clean profile.
+7. Switch light/dark/system appearance while editing and confirm cursor, selection, undo history, and scroll position remain intact.
+8. Make an edit, switch to View, and confirm the unsaved preview updates.
+9. Save and reload the file from another application.
+10. Modify the file externally and confirm Vellum warns before overwrite.
+11. Test Save As and new Markdown/HTML creation.
+12. Attempt to switch files, close the document, and exit with unsaved changes.
+13. Recheck all previous viewer settings, zoom controls, Fit-to-Width, theme behavior, context menus, and session restoration.
+14. Build MSI and NSIS installers on Windows.
+15. Confirm file associations and startup opening on a clean profile.
 
 ## Remaining release blockers outside the repository
 
 - Windows code-signing certificate and timestamping configuration.
 - Final license selection.
 - Clean-machine MSI and NSIS smoke testing.
-- Final local package-lock root-version metadata refresh.
 - Published checksums and release provenance.
 
 ## Conclusion
 
-The clean 0.2.0 branch adds the approved editing and sidebar scope without replacing the established application architecture. The repository-level security, lifecycle, memory, and UI findings are addressed in code. The branch should remain unmerged until CI completes and the manual Windows/UI smoke test is performed.
+The clean 0.2.0 branch adds the approved editing and sidebar scope without replacing the established application architecture. The repository-level security, lifecycle, memory, dependency, and UI findings are addressed in code. The branch remains draft and unmerged until the manual Windows/UI smoke test is performed.
