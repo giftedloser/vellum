@@ -43,46 +43,55 @@
   display: none;
 }
 
-/* Editor actions join the shared bottom-center control cluster. */
+/* Editing uses the same bottom activation zone and expands from the mode pill. */
 .editor-controls-hotspot {
   position: absolute;
   z-index: 31;
-  right: 0;
   bottom: 0;
-  left: 0;
+  left: 50%;
+  width: min(760px, calc(100% - 24px));
+  height: 116px;
   display: flex;
-  height: 84px;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: 10px;
-  pointer-events: none;
+  padding-bottom: 12px;
+  transform: translateX(-50%);
+  pointer-events: auto;
 }
 
 .editor-controls {
   display: flex;
   align-items: center;
   height: 38px;
-  margin-left: 42px;
+  margin-left: 20px;
   padding: 2px;
+  overflow: hidden;
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
   color: var(--vellum-control-fg);
   background: var(--vellum-control-bg);
   border: 1px solid var(--vellum-control-border);
-  border-left: 0;
-  border-radius: 0 11px 11px 0;
+  border-radius: 11px;
   box-shadow: var(--vellum-control-shadow);
   backdrop-filter: blur(14px) saturate(120%);
   -webkit-backdrop-filter: blur(14px) saturate(120%);
-  transform: translateY(3px) scale(.985);
-  transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease, background-color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+  transform: translateY(5px) scale(.97);
+  transition:
+    opacity 150ms ease 240ms,
+    visibility 0s linear 390ms,
+    transform 170ms ease 240ms,
+    background-color 140ms ease,
+    border-color 140ms ease;
 }
 
 .editor-controls-hotspot:hover .editor-controls,
 .editor-controls:focus-within {
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
+  transition-delay: 35ms, 0s, 35ms, 0s, 0s;
   background: var(--vellum-control-bg-hover);
   border-color: rgba(255, 255, 255, .22);
 }
@@ -120,42 +129,63 @@
   color-scheme: dark;
 }
 
-/* Only the action for the other mode is shown, producing one compact toggle. */
+/* The resting state is one small centered View/Edit pill. */
 .editor-mode-toggle {
   position: absolute;
   z-index: 33;
-  bottom: 10px;
+  bottom: 12px;
   left: 50%;
   display: flex;
   height: 38px;
-  transform: translateX(calc(-50% - 190px));
+  transform: translateX(-50%);
   padding: 2px;
-  opacity: 0;
-  pointer-events: none;
   color: var(--vellum-control-fg);
   background: var(--vellum-control-bg);
   border: 1px solid var(--vellum-control-border);
-  border-radius: 11px 0 0 11px;
+  border-radius: 999px;
   box-shadow: var(--vellum-control-shadow);
   backdrop-filter: blur(14px) saturate(120%);
   -webkit-backdrop-filter: blur(14px) saturate(120%);
-  transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease;
+  opacity: .72;
+  transition:
+    opacity 150ms ease 220ms,
+    transform 180ms cubic-bezier(.2,.8,.2,1) 220ms,
+    background-color 140ms ease,
+    border-radius 160ms ease 220ms;
 }
 
-.main-pane:hover .editor-mode-toggle,
+.main-pane:has(.viewer-zoom-hotspot:hover) .editor-mode-toggle,
+.main-pane:has(.viewer-zoom-controls:focus-within) .editor-mode-toggle {
+  opacity: 1;
+  transform: translateX(calc(-50% - 106px));
+  border-radius: 11px;
+  background: var(--vellum-control-bg-hover);
+  transition-delay: 35ms, 35ms, 0s, 35ms;
+}
+
+.main-pane:has(.editor-controls-hotspot:hover) .editor-mode-toggle,
+.main-pane:has(.editor-controls:focus-within) .editor-mode-toggle {
+  opacity: 1;
+  transform: translateX(calc(-50% - 228px));
+  border-radius: 11px;
+  background: var(--vellum-control-bg-hover);
+  transition-delay: 35ms, 35ms, 0s, 35ms;
+}
+
+.editor-mode-toggle:hover,
 .editor-mode-toggle:focus-within {
   opacity: 1;
-  pointer-events: auto;
   background: var(--vellum-control-bg-hover);
+  transition-delay: 0s;
 }
 
 .editor-mode-toggle button {
   display: none;
-  min-width: 42px;
+  min-width: 48px;
   height: 32px;
   border: 0;
-  border-radius: 8px;
-  padding: 0 10px;
+  border-radius: 999px;
+  padding: 0 11px;
   color: var(--vellum-control-fg);
   background: transparent;
   font-size: 10px;
@@ -172,6 +202,19 @@
 .editor-mode-toggle button:focus-visible {
   color: var(--vellum-control-fg-strong);
   background: rgba(255, 255, 255, .10);
+}
+
+/* Preserve dirty-state visibility even though the active mode button is hidden. */
+.editor-mode-toggle:has(.unsaved-dot)::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vellum-control-fg-strong);
+  box-shadow: 0 0 0 2px var(--vellum-control-bg);
 }
 
 .unsaved-dot {
@@ -198,10 +241,16 @@
 }
 
 @media (hover: none) {
-  .editor-controls,
-  .editor-mode-toggle {
+  .editor-controls {
+    visibility: visible;
     opacity: 1;
     pointer-events: auto;
+    transform: none;
+    transition-delay: 0s;
+  }
+
+  .editor-mode-toggle {
+    opacity: 1;
   }
 
   .tree-pin {
@@ -214,8 +263,9 @@
     display: none;
   }
 
-  .editor-mode-toggle {
-    transform: translateX(calc(-50% - 150px));
+  .main-pane:has(.editor-controls-hotspot:hover) .editor-mode-toggle,
+  .main-pane:has(.editor-controls:focus-within) .editor-mode-toggle {
+    transform: translateX(calc(-50% - 162px));
   }
 }
 
