@@ -2,6 +2,14 @@
 
 All notable changes to Vellum are documented in this file.
 
+## [0.2.1] - 2026-07-16
+
+### Fixed
+
+- Restored scripts, animations, and viewer zoom for complex HTML documents in packaged builds.
+- Restored window closing from Vellum and Windows by granting the required native destroy capability.
+- Added transparent safe-area padding to Windows icons for clean taskbar rendering.
+
 ## [0.2.0] - 2026-07-16
 
 ### Added
@@ -24,4 +32,5 @@ All notable changes to Vellum are documented in this file.
 - Kept HTML rendering inside a sandboxed opaque-origin frame.
 - Added JavaScript and Rust dependency audits to continuous integration.
 
+[0.2.1]: https://github.com/giftedloser/vellum/releases/tag/v0.2.1
 [0.2.0]: https://github.com/giftedloser/vellum/releases/tag/v0.2.0
