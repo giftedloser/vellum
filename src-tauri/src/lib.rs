@@ -65,7 +65,9 @@ fn scan_canonical(
         return Err("This folder exceeds Vellum's maximum nesting depth.".into());
     }
     if *entry_count >= MAX_SCAN_ENTRIES {
-        return Err("This folder contains more entries than Vellum can safely index at once.".into());
+        return Err(
+            "This folder contains more entries than Vellum can safely index at once.".into(),
+        );
     }
     *entry_count += 1;
 
@@ -247,7 +249,11 @@ fn document_modified_ms(path: String, state: State<'_, AppState>) -> Result<u64,
 }
 
 #[tauri::command]
-fn write_document(path: String, content: String, state: State<'_, AppState>) -> Result<u64, String> {
+fn write_document(
+    path: String,
+    content: String,
+    state: State<'_, AppState>,
+) -> Result<u64, String> {
     if content.len() as u64 > MAX_DOCUMENT_BYTES {
         return Err("This document is larger than Vellum's 32 MB safety limit.".into());
     }
