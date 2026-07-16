@@ -1,138 +1,192 @@
 # Vellum Release-Candidate Audit
 
-Audit date: July 15, 2026
+Audit date: July 16, 2026
 
 ## Release posture
 
-This pass treated the repository as if a Windows release were scheduled for the next day. It reviewed the native command boundary, filesystem authorization, HTML and Markdown rendering, React lifecycle usage, startup behavior, dependency exposure, memory pressure, build configuration, installer registration, and Windows default-application support.
+This pass treated Vellum 0.2.0 as a release candidate. It reviewed the existing viewer behavior, the new source editor, Pinned/Recent sidebar model, native read/write boundary, external-change handling, HTML and Markdown rendering, React lifecycle usage, memory pressure, accessibility, build configuration, installer registration, and Windows default-application support.
 
-## Corrected release blockers
+The implementation was restarted from `main` after an earlier draft replaced too much of the application shell. The accepted implementation preserves the established viewer, settings, shortcuts, startup restoration, context menu, native window controls, zoom behavior, and security configuration, then adds editing and sidebar behavior through the existing code paths.
 
-### Windows file associations
+## Added 0.2.0 scope
 
-The installer now registers Vellum as a viewer for `.md`, `.markdown`, `.html`, and `.htm` files. Each association is represented as an individual schema-valid Tauri entry.
+### Lightweight source editing
 
-Explorer startup paths are processed natively before React mounts:
+Vellum now supports optional source editing for Markdown and HTML while remaining viewer-first.
 
-- only supported extensions are accepted;
-- paths are canonicalized;
-- regular files are required;
-- the selected file is authorized through the same native boundary as picker-selected files;
-- startup files open without being permanently added to the pinned library.
+- View remains the default mode.
+- The editor is lazy-loaded only when Edit mode is opened.
+- Markdown and HTML receive lightweight local syntax highlighting.
+- Word wrap is enabled by default.
+- Search, native undo/redo, tab indentation, and bracket/quote pairing are available.
+- Editor text size and installed code-font preference are persisted.
+- Editor colors react to Vellum's resolved light or dark theme.
+- Editor controls use the same translucent floating-control visual language as the renderer controls.
+- No editor framework, language server, formatter, linter, project model, extension system, terminal, AI service, or autosave system was added.
 
-Windows still requires the user to choose Vellum in Default Apps or through Open With. The installer intentionally does not attempt to override user defaults silently.
+### Save behavior
 
-### Release configuration
+- Save is explicit and available through the UI or `Ctrl/Cmd+S`.
+- Save As is explicit and required for a new document's first write.
+- Revert restores the last successfully loaded or saved content.
+- Unsaved changes are protected when opening another file, closing the document, closing the native window, or unloading the WebView.
+- Existing files are checked for external modification before overwrite.
+- Editor writes retain the existing 32 MB document limit and supported-extension boundary.
+- The native command writes and syncs a temporary sibling before replacing the destination.
+- Existing destinations are moved to a temporary backup during replacement and restored if final placement fails.
+- New successfully saved files are authorized and added to the sidebar only after the native write succeeds.
 
-- WebView developer tools are disabled explicitly.
-- Browser extensions, browser zoom hotkeys, and general autofill are disabled.
-- JavaScript prototypes are frozen by Tauri before application code runs.
-- Unused plugin commands are stripped during release builds.
-- Bundle metadata now identifies Vellum as a utility and includes release descriptions.
+### Sidebar model
 
-### Native optimization
+The sidebar now has two content sections:
 
-The Rust release profile now uses:
+- **Pinned** for manually retained files and folders.
+- **Recent** for automatic activity ordering.
 
-- whole-program link-time optimization;
-- one code-generation unit;
-- size-oriented optimization;
-- stripped symbols;
-- abort-on-panic behavior.
+Files and folders coexist. Opening a file inside an added folder promotes the owning folder rather than producing a duplicate loose-file entry. Removing an item affects only Vellum's local sidebar state and never deletes the filesystem item. Recent history is capped at 30 roots.
 
-The native filesystem scanner also uses cached sort keys rather than repeatedly lowercasing names during comparisons.
+## Preserved existing behavior
 
-### CI release gates
+The audit specifically verified that the following systems remain represented in the clean implementation:
 
-CI now validates:
+- optional active-document restoration;
+- persistent added-root authorization and restoration;
+- interface scale;
+- sidebar transparency;
+- viewer zoom;
+- Markdown reading width, text scale, and line spacing;
+- HTML Fit-to-Width measurement;
+- operating-system light/dark theme reaction;
+- frameless window controls and drag region;
+- hidden floating viewer controls;
+- application and iframe context menus;
+- `Ctrl/Cmd+O`, `Shift+Ctrl/Cmd+O`, `Ctrl/Cmd+B`, `Ctrl/Cmd+R`, `Ctrl/Cmd+W`, and `Ctrl/Cmd+,`;
+- request-token protection against stale asynchronous document reads;
+- sandboxed HTML and sanitized Markdown rendering;
+- Windows startup-document handling and file associations.
 
-- strict TypeScript and Vite production build;
-- production JavaScript dependency vulnerabilities at high severity or above;
-- RustSec advisories;
-- Rust formatting and unit tests;
-- native icon generation;
-- a Windows release executable build.
+New shortcuts are `Ctrl/Cmd+E` for View/Edit, `Ctrl/Cmd+S` for Save, `Shift+Ctrl/Cmd+S` for Save As, and `Ctrl/Cmd+F` inside the editor.
 
 ## Security findings
 
 ### Native boundary
 
-The native boundary remains narrow and appropriate for a local viewer:
+The native boundary remains narrow:
 
-- supported extensions only;
-- canonical paths;
+- supported Markdown and HTML extensions only;
+- canonical paths for existing files and parent directories;
 - explicit file or directory authorization;
 - regular-file checks;
-- 32 MB per-document limit;
+- 32 MB read and write limit;
 - 32-level traversal depth limit;
 - 20,000-entry scan limit;
 - symbolic-link cycle protection;
-- no source-file writes;
 - no shell execution;
 - no telemetry or account system.
+
+Existing files cannot be overwritten unless they are already authorized through Vellum. New files may be created only through a supported path supplied by the save flow and become authorized after a successful write.
 
 ### HTML execution
 
 Authored HTML remains intentionally capable of running scripts and loading remote resources. It is isolated in a sandboxed opaque-origin iframe without `allow-same-origin`, and it uses a no-referrer policy.
 
-The application CSP is necessarily broader than a static document viewer because `srcDoc` inherits the embedding document's policy. This is the largest remaining security tradeoff. The current boundary is acceptable for a personal local viewer because the iframe cannot access the Vellum origin, but a future release intended for untrusted public documents should move authored HTML into a dedicated custom protocol or isolated webview with its own policy.
+The application CSP is broader than a static viewer because `srcDoc` inherits the embedding document's policy. This remains the largest security tradeoff. A future release intended for routinely opening untrusted public HTML should move authored HTML into a dedicated custom protocol or isolated webview with its own policy.
 
-## React useEffect audit
+### Editor highlighting
 
-Every effect in `App.tsx` was classified by purpose.
+The editor highlight layer escapes source text before adding local token spans. The editable textarea remains plain text; highlighted markup is never parsed back into the document. Markdown preview continues through `marked` followed by DOMPurify. HTML preview continues through the sandboxed iframe.
 
-Appropriate effects:
+## React and lifecycle audit
 
-- restoring native-authorized library state on startup;
-- synchronizing the native dialog element;
+Effects are limited to external synchronization and subscriptions:
+
+- restoring native-authorized roots and the optional active document;
+- synchronizing the native settings dialog;
 - subscribing to operating-system theme changes;
-- persisting user-controlled state to local storage;
-- subscribing to window keyboard, pointer, resize, blur, and iframe message events;
+- applying and persisting preferences;
+- applying native WebView interface zoom;
+- persisting sidebar, recent, pinned, and active-document state;
+- protecting native/WebView close operations;
+- subscribing to keyboard, pointer, resize, blur, and iframe message events;
 - synchronizing viewer zoom into the sandboxed iframe;
 - creating and cleaning up the custom scroll indicator.
 
-No effect is used to derive render-only values that could simply be calculated during render. The document renderers remain memoized computations, and keyboard handling correctly uses `useEffectEvent` to avoid stale closures without repeatedly registering listeners.
+The document-opening callback is stable and reads current roots and dirty state through refs. Changing sidebar contents or typing in the editor therefore cannot re-run startup restoration or reopen the active file.
 
-Two non-blocking optimization opportunities remain:
+The two optimization opportunities documented in the previous audit are now corrected:
 
-1. The preference synchronization effect currently reapplies native WebView zoom whenever any preference changes. It is correct but could be split so the native call depends only on `interfaceScale`.
-2. The custom application scroll indicator performs geometry reads on each scroll event. It is cleaned up correctly and does not leak, but a requestAnimationFrame throttle would reduce layout work during sustained scrolling.
+1. Native WebView zoom is updated by an effect depending only on `interfaceScale`.
+2. Application and iframe scroll-indicator layout work is requestAnimationFrame-throttled.
 
-These are polish items rather than release blockers. They do not create subscription leaks, stale state, repeated mounting, or unbounded memory growth.
+Keyboard handling continues to use `useEffectEvent`, preventing stale closures without repeatedly attaching the global listener. Native close protection also reads current dirty state from a ref and registers only once.
 
 ## Memory and performance review
 
-- Only one document body is retained at a time.
-- Previous document content becomes collectible when a new document replaces it.
-- Asynchronous document opens use a monotonically increasing request token so stale reads cannot replace newer content.
-- Event listeners, timers, dialogs, and dynamically created indicator elements have cleanup paths.
-- Directory scans are bounded and cycle-aware.
-- Markdown conversion is memoized and sanitized only when the active document changes.
-- Prepared HTML is memoized by document and resolved theme.
-- The HTML iframe is keyed by document path, ensuring document-level state is discarded when switching files.
+- Only one document body and one editable draft are retained at a time.
+- The source editor is code-split and not instantiated during normal viewing.
+- No editor framework or additional runtime dependency was added.
+- Syntax highlighting is memoized by source content and language.
+- Previous document and editor content becomes collectible when replaced.
+- Asynchronous document opens use a monotonically increasing request token.
+- Event listeners, animation frames, timers, native event subscriptions, dialogs, and generated indicators have cleanup paths.
+- Recent history is capped at 30 roots.
+- Directory scans remain bounded and cycle-aware.
+- Markdown conversion is memoized and sanitized only when source or document type changes.
+- Prepared HTML is memoized by source and resolved theme.
+- The HTML iframe is keyed by document path.
 
-The largest expected memory consumer remains the platform WebView itself, not the React or Rust application state.
+The largest expected memory consumer remains the platform WebView, not application state.
 
-## Required Windows smoke test before distribution
+## UI and accessibility review
 
-1. Build MSI and NSIS installers.
-2. Install on a clean Windows profile.
-3. Confirm Vellum appears under Default Apps for all four extensions.
-4. Set `.md` and `.html` defaults separately.
-5. Double-click each supported extension with Vellum closed.
-6. Repeat with Vellum already running.
-7. Confirm opened files are not added to the pinned library.
-8. Test paths containing spaces, Unicode, long names, and network locations.
-9. Upgrade over the installed version and confirm associations remain registered.
-10. Uninstall and confirm Windows removes Vellum's registration cleanly.
+- Existing viewer and window-control placement remains unchanged.
+- Editor controls reuse existing control variables, borders, shadows, blur, sizing, and motion timing.
+- View/Edit state is visible and exposes an unsaved indicator.
+- Icon-only controls have labels or titles.
+- Settings continue to use a native modal dialog with cancel/close behavior.
+- Editor search uses a labeled search input and keyboard dismissal.
+- The source textarea has an explicit Markdown or HTML label.
+- Touch devices reveal editor controls without requiring hover.
+- Reduced-motion behavior remains inherited from the existing application styles.
+
+## CI release gates
+
+CI validates:
+
+- strict TypeScript and Vite production build;
+- production JavaScript vulnerabilities at high severity or above;
+- RustSec advisories;
+- Rust formatting and unit tests;
+- native icon generation;
+- a Windows release executable build.
+
+No new JavaScript runtime dependency was introduced, so the existing lockfile dependency graph remains unchanged. Package and native release versions are 0.2.0; the lockfile's root-version metadata does not affect resolution but should be refreshed by the final local `npm install --package-lock-only` before tagging.
+
+## Required manual smoke test
+
+1. Open loose Markdown and HTML files.
+2. Open a folder and confirm child-file activity promotes the folder in Recent.
+3. Pin and unpin files and folders.
+4. Remove sidebar entries and confirm nothing is deleted from disk.
+5. Enter Edit mode for Markdown and HTML.
+6. Verify highlighting, wrap, search, undo/redo, tab indentation, pair insertion, font selection, and text sizing.
+7. Make an edit, switch to View, and confirm the unsaved preview updates.
+8. Save and reload the file from another application.
+9. Modify the file externally and confirm Vellum warns before overwrite.
+10. Test Save As and new Markdown/HTML creation.
+11. Attempt to switch files, close the document, and exit with unsaved changes.
+12. Recheck all previous viewer settings, zoom controls, Fit-to-Width, theme behavior, context menus, and session restoration.
+13. Build MSI and NSIS installers on Windows.
+14. Confirm file associations and startup opening on a clean profile.
 
 ## Remaining release blockers outside the repository
 
 - Windows code-signing certificate and timestamping configuration.
 - Final license selection.
 - Clean-machine MSI and NSIS smoke testing.
+- Final local package-lock root-version metadata refresh.
 - Published checksums and release provenance.
 
 ## Conclusion
 
-The repository is substantially closer to release-candidate quality. Native file handling, Windows association registration, release compilation, dependency auditing, and startup behavior are now represented in code and CI. The remaining blockers are signing, licensing, and actual installer validation on Windows rather than known repository architecture defects.
+The clean 0.2.0 branch adds the approved editing and sidebar scope without replacing the established application architecture. The repository-level security, lifecycle, memory, and UI findings are addressed in code. The branch should remain unmerged until CI completes and the manual Windows/UI smoke test is performed.
