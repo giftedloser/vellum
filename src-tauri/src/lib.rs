@@ -2,8 +2,10 @@ use serde::Serialize;
 use std::{
     collections::HashSet,
     env, fs,
+    io::Write,
     path::{Path, PathBuf},
     sync::Mutex,
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::State;
 
@@ -63,20 +65,16 @@ fn scan_canonical(
         return Err("This folder exceeds Vellum's maximum nesting depth.".into());
     }
     if *entry_count >= MAX_SCAN_ENTRIES {
-        return Err(
-            "This folder contains more entries than Vellum can safely index at once.".into(),
-        );
+        return Err("This folder contains more entries than Vellum can safely index at once.".into());
     }
     *entry_count += 1;
 
     if !visited.insert(canonical.to_path_buf()) {
         return Err("A recursive filesystem link was skipped.".into());
     }
-
     if canonical.is_file() {
         return file_entry(canonical);
     }
-
     if !canonical.is_dir() {
         return Err("The selected path is not a file or directory.".into());
     }
@@ -130,6 +128,25 @@ fn is_authorized(path: &Path, roots: &[PathBuf]) -> bool {
             path.starts_with(root)
         }
     })
+}
+
+fn modified_ms(path: &Path) -> Result<u64, String> {
+    let modified = fs::metadata(path)
+        .map_err(|error| error.to_string())?
+        .modified()
+        .map_err(|error| error.to_string())?;
+    Ok(modified
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64)
+}
+
+fn unique_sibling(parent: &Path, label: &str) -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    parent.join(format!(".vellum-{label}-{stamp}.tmp"))
 }
 
 #[cfg(test)]
@@ -214,6 +231,95 @@ fn read_document(path: String, state: State<'_, AppState>) -> Result<String, Str
     fs::read_to_string(canonical).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn document_modified_ms(path: String, state: State<'_, AppState>) -> Result<u64, String> {
+    let canonical = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let roots = state
+        .allowed_roots
+        .lock()
+        .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
+    if !is_authorized(&canonical, &roots) {
+        return Err("This document is not in the active Vellum library.".into());
+    }
+    modified_ms(&canonical)
+}
+
+#[tauri::command]
+fn write_document(path: String, content: String, state: State<'_, AppState>) -> Result<u64, String> {
+    if content.len() as u64 > MAX_DOCUMENT_BYTES {
+        return Err("This document is larger than Vellum's 32 MB safety limit.".into());
+    }
+
+    let requested = PathBuf::from(path);
+    if !supported(&requested) {
+        return Err("Vellum only saves Markdown and HTML files.".into());
+    }
+
+    let parent = requested
+        .parent()
+        .ok_or_else(|| "The selected save location is invalid.".to_string())?
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let filename = requested
+        .file_name()
+        .ok_or_else(|| "The selected save filename is invalid.".to_string())?;
+    let destination = parent.join(filename);
+
+    if destination.exists() {
+        let canonical = destination
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
+        let roots = state
+            .allowed_roots
+            .lock()
+            .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
+        if !is_authorized(&canonical, &roots) {
+            return Err("This document is not authorized for editing.".into());
+        }
+    }
+
+    let temporary = unique_sibling(&parent, "write");
+    let backup = unique_sibling(&parent, "backup");
+    {
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)
+            .map_err(|error| error.to_string())?;
+        file.write_all(content.as_bytes())
+            .map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+    }
+
+    let had_existing = destination.exists();
+    if had_existing {
+        fs::rename(&destination, &backup).map_err(|error| {
+            let _ = fs::remove_file(&temporary);
+            error.to_string()
+        })?;
+    }
+
+    if let Err(error) = fs::rename(&temporary, &destination) {
+        if had_existing {
+            let _ = fs::rename(&backup, &destination);
+        }
+        let _ = fs::remove_file(&temporary);
+        return Err(error.to_string());
+    }
+
+    if had_existing {
+        let _ = fs::remove_file(&backup);
+    }
+
+    let canonical = destination
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    authorize_root(&canonical, &state)?;
+    modified_ms(&canonical)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -222,7 +328,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             startup_document,
             scan_path,
-            read_document
+            read_document,
+            document_modified_ms,
+            write_document
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vellum");
