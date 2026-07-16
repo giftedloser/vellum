@@ -1,0 +1,18 @@
+.editor-shell { position: absolute; inset: 0; min-width: 0; min-height: 0; }
+.source-editor { position: absolute; inset: 0; }
+.editor-controls-hotspot { position: absolute; z-index: 30; left: 50%; top: 0; width: min(720px, calc(100% - 170px)); height: 74px; transform: translateX(-50%); display: flex; justify-content: center; align-items: flex-start; padding-top: 10px; pointer-events: auto; }
+.editor-controls { display: flex; align-items: center; height: 38px; padding: 2px; opacity: 0; pointer-events: none; color: var(--vellum-control-fg); background: var(--vellum-control-bg); border: 1px solid var(--vellum-control-border); border-radius: 11px; box-shadow: var(--vellum-control-shadow); backdrop-filter: blur(14px) saturate(120%); transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease, border-color var(--motion-fast) ease; }
+.editor-controls-hotspot:hover .editor-controls, .editor-controls:focus-within { opacity: 1; pointer-events: auto; background: var(--vellum-control-bg-hover); border-color: rgba(255,255,255,.22); }
+.editor-controls button, .editor-controls select { height: 32px; min-width: 36px; border: 0; border-left: 1px solid var(--vellum-control-divider); background: transparent; color: var(--vellum-control-fg); font: inherit; padding: 0 10px; }
+.editor-controls > :first-child { border-left: 0; }
+.editor-controls button:hover:not(:disabled), .editor-controls select:hover { color: var(--vellum-control-fg-strong); background: rgba(255,255,255,.10); }
+.editor-controls button.active { color: var(--vellum-control-fg-strong); background: rgba(255,255,255,.12); }
+.editor-controls button:disabled { opacity: .38; }
+.editor-mode-toggle { position: absolute; z-index: 28; top: 12px; right: 138px; display: flex; height: 34px; padding: 2px; border-radius: 10px; background: color-mix(in srgb, #171716 86%, transparent); border: 1px solid color-mix(in srgb, currentColor 12%, transparent); backdrop-filter: blur(12px); }
+.editor-mode-toggle button { border: 0; background: transparent; color: inherit; opacity: .62; border-radius: 7px; padding: 0 11px; }
+.editor-mode-toggle button.active { opacity: 1; background: color-mix(in srgb, currentColor 11%, transparent); }
+.unsaved-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; margin-left: 6px; }
+.sidebar-section.recent-section { min-height: 0; flex: 1; }
+.tree-pin { opacity: 0; }
+.tree-row-wrap:hover .tree-pin, .tree-row-wrap:focus-within .tree-pin { opacity: .7; }
+@media (hover: none) { .editor-controls { opacity: 1; pointer-events: auto; } }
