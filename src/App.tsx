@@ -6,7 +6,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import FileTypeIcon from "./FileTypeIcon";
-import { collapsedRecentCount, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type RecentItem } from "./recent";
+import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type RecentItem } from "./recent";
 import {
   ChevronDown,
   ChevronRight,
@@ -129,10 +129,6 @@ function extension(path: string) {
 
 function isSupported(path: string) {
   return allowedExtensions.includes(extension(path));
-}
-
-function documentKind(path: string): "markdown" | "html" {
-  return extension(path).startsWith("htm") ? "html" : "markdown";
 }
 
 function ensureExtension(path: string, kind: "markdown" | "html") {

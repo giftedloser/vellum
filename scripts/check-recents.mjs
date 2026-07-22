@@ -15,5 +15,7 @@ assert.equal(recent.visibleRecents(reopened, false).length, 30);
 assert.equal(recent.visibleRecents(reopened, true).length, 31);
 assert.equal(recent.sidebarLabel("notes.v2.markdown", true), "notes.v2");
 assert.equal(recent.sidebarLabel("docs.v2", false), "docs.v2");
+assert.equal(recent.documentKind(String.raw`\\?\C:\Users\Marshall\mixed\README.md`), "markdown");
+assert.equal(recent.documentKind(String.raw`\\?\C:\Users\Marshall\mixed\page.html`), "html");
 
 console.log("Recent history behavior passed.");
