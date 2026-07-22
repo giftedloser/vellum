@@ -2,15 +2,15 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
-  --paper-wash: rgba(133, 109, 69, .022);
-  --paper-vignette: rgba(95, 76, 45, .032);
+  --paper-wash: oklch(0.45 0 0 / .022);
+  --paper-vignette: oklch(0 0 0 / .032);
   --paper-blend: multiply;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --paper-wash: rgba(219, 194, 149, .018);
-  --paper-vignette: rgba(0, 0, 0, .12);
+  --paper-wash: oklch(0.82 0 0 / .018);
+  --paper-vignette: oklch(0 0 0 / .12);
   --paper-blend: soft-light;
 }
 
@@ -135,7 +135,7 @@
   background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
   border: 1px solid var(--border-strong);
   border-radius: 13px;
-  box-shadow: 0 18px 55px rgba(20, 16, 8, .24), 0 2px 8px rgba(20, 16, 8, .10);
+  box-shadow: 0 18px 55px oklch(0 0 0 / .24), 0 2px 8px oklch(0 0 0 / .10);
   backdrop-filter: blur(22px) saturate(120%);
   animation: menu-in var(--motion-fast) ease both;
 }

@@ -210,7 +210,7 @@ input:focus-visible {
 }
 
 .modal-backdrop {
-  background: rgba(18, 16, 12, .24);
+  background: oklch(0 0 0 / .24);
   backdrop-filter: blur(7px);
 }
 

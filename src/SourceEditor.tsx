@@ -65,28 +65,28 @@ function languageExtension(language: Props["language"]) {
 function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
   const palette = dark
     ? {
-        foreground: "#d8d1c5",
-        muted: "#8f9a86",
-        heading: "#d3a36d",
-        keyword: "#dda097",
-        attribute: "#d0b272",
-        string: "#9bc39f",
-        link: "#82b4d0",
-        code: "#c1a4df",
-        selection: "rgba(211, 163, 109, .22)",
+        foreground: "oklch(0.87 0 0)",
+        muted: "oklch(0.68 0 0)",
+        heading: "oklch(0.82 0 0)",
+        keyword: "oklch(0.78 0 0)",
+        attribute: "oklch(0.74 0 0)",
+        string: "oklch(0.71 0 0)",
+        link: "oklch(0.8 0 0)",
+        code: "oklch(0.76 0 0)",
+        selection: "oklch(0.82 0 0 / .22)",
         active: "rgba(255, 255, 255, .025)",
       }
     : {
-        foreground: "#342f29",
-        muted: "#78806f",
-        heading: "#9c6b38",
-        keyword: "#8b4f45",
-        attribute: "#8a6b32",
-        string: "#4f7556",
-        link: "#3d6f8f",
-        code: "#7b5f9e",
-        selection: "rgba(156, 107, 56, .18)",
-        active: "rgba(52, 47, 41, .025)",
+        foreground: "oklch(0.3 0 0)",
+        muted: "oklch(0.52 0 0)",
+        heading: "oklch(0.36 0 0)",
+        keyword: "oklch(0.4 0 0)",
+        attribute: "oklch(0.44 0 0)",
+        string: "oklch(0.47 0 0)",
+        link: "oklch(0.38 0 0)",
+        code: "oklch(0.42 0 0)",
+        selection: "oklch(0.3 0 0 / .18)",
+        active: "oklch(0.3 0 0 / .025)",
       };
 
   return [

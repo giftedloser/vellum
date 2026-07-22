@@ -5,7 +5,7 @@
   --editor-control-divider: var(--border);
   --editor-control-fg: var(--muted);
   --editor-control-fg-strong: var(--text);
-  --editor-control-shadow: 0 8px 28px rgba(45, 39, 28, .14), 0 1px 3px rgba(45, 39, 28, .10);
+  --editor-control-shadow: 0 8px 28px oklch(0 0 0 / .14), 0 1px 3px oklch(0 0 0 / .10);
   --editor-select-scheme: light;
 }
 
