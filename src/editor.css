@@ -121,13 +121,6 @@
   animation: none;
 }
 
-.app-shell:has(.window-controls-hotspot:hover, .document-controls-wrap:hover, .window-controls:focus-within, .document-controls:focus-within) .window-controls,
-.app-shell:has(.window-controls-hotspot:hover, .document-controls-wrap:hover, .window-controls:focus-within, .document-controls:focus-within) .document-controls {
-  opacity: 1;
-  transform: translateY(0);
-  animation: none;
-}
-
 .controls-always-visible .document-controls {
   opacity: 1;
   transform: none;

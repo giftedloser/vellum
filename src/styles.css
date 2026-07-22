@@ -79,7 +79,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   box-shadow: none;
 }
 
-.global-drag-region { position: fixed; z-index: 35; top: 0; right: 132px; left: 0; height: 28px; pointer-events: auto; touch-action: none; user-select: none; background: transparent; }
+.global-drag-region { position: fixed; z-index: 35; top: 0; right: 0; left: 0; height: 28px; pointer-events: auto; touch-action: none; user-select: none; background: transparent; }
 .global-drag-region.sidebar-visible { left: 256px; }
 .sidebar-collapsed .global-drag-region { left: 52px; }
 
@@ -89,13 +89,6 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .brand-rest { display: inline-block; max-width: 120px; overflow: hidden; opacity: 1; transform: translateX(0); transition: max-width var(--sidebar-motion) var(--sidebar-ease), opacity var(--sidebar-motion) var(--sidebar-ease), transform var(--sidebar-motion) var(--sidebar-ease); }
 .sidebar-titlebar { position: relative; z-index: 2; height: 56px; flex: none; display: flex; align-items: flex-start; border-bottom: 1px solid var(--border); user-select: none; }
 .sidebar-collapsed .brand-rest { max-width: 0; opacity: 0; transform: translateX(-6px); }
-.window-controls-hotspot { position: absolute; z-index: 40; top: 0; right: 0; width: 156px; height: 58px; display: flex; justify-content: flex-end; align-items: flex-start; }
-.window-controls { display: flex; height: 44px; opacity: 0; pointer-events: none; transition: opacity var(--motion-fast) ease; }
-.window-controls-hotspot:hover .window-controls, .window-controls:focus-within { opacity: 1; pointer-events: auto; }
-.window-controls button { width: 44px; height: 44px; border: 0; background: transparent; color: var(--floating-control); display: grid; place-items: center; }
-.window-controls button:hover { color: var(--floating-control-strong); background: var(--floating-control-hover); }
-.window-controls .close:hover { color: var(--floating-control-strong); background: rgba(157,43,34,.18); }
-
 .workspace { --sidebar-ease: cubic-bezier(.77,0,.18,1); display: flex; width: 100%; height: 100%; }
 .sidebar {
   position: relative;

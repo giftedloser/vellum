@@ -43,7 +43,6 @@
 }
 
 .sidebar button,
-.window-controls button,
 .settings-panel button {
   -webkit-tap-highlight-color: transparent;
 }

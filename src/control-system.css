@@ -1,90 +1,52 @@
-/* Shared floating controls: conventional window controls and one bottom document pill. */
-/* Window controls share the same surface language as the document bar. */
-.window-controls-hotspot {
-  position: absolute;
-  z-index: 40;
-  top: 0;
-  right: 0;
-  width: 144px;
-  height: 56px;
+/* Permanent window controls attached to the sidebar title bar. */
+.sidebar-titlebar {
+  align-items: center;
+}
+
+.sidebar-titlebar .brand {
+  width: auto;
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-window-controls {
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  pointer-events: auto;
+  height: 32px;
+  margin-right: 2px;
+  flex: none;
 }
 
-.window-controls {
-  display: flex;
-  height: 42px;
-  margin: 8px 8px 0 0;
-  overflow: hidden;
-  opacity: 1;
-  pointer-events: auto;
-  color: var(--editor-control-fg);
-  background: var(--editor-control-bg);
-  border: 1px solid var(--editor-control-border);
-  border-radius: 12px;
-  box-shadow: var(--editor-control-shadow);
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
-  animation: floating-controls-idle 1.8s cubic-bezier(.2, 0, 0, 1) both;
-}
-
-.window-controls-hotspot:hover .window-controls,
-.window-controls:focus-within {
-  opacity: 1;
-  transform: translateY(0);
-  animation: none;
-}
-
-.controls-always-visible .window-controls {
-  opacity: 1;
-  transform: none;
-  animation: none;
-}
-
-.window-controls button {
-  width: 40px;
-  height: 40px;
+.sidebar-window-controls button {
+  width: 36px;
+  height: 32px;
+  display: grid;
+  place-items: center;
   border: 0;
-  border-radius: 0;
-  color: var(--editor-control-fg) !important;
+  border-radius: 7px;
+  color: var(--muted) !important;
   background: transparent !important;
   transition: color 120ms ease, background-color 120ms ease, transform 80ms ease;
 }
 
-.window-controls button:first-child { border-radius: 11px 0 0 11px; }
-.window-controls button:last-child { border-radius: 0 11px 11px 0; }
-
-.window-controls button:hover {
-  color: var(--editor-control-fg-strong) !important;
-  background: color-mix(in srgb, currentColor 9%, transparent) !important;
+.sidebar-window-controls button:hover {
+  color: var(--text) !important;
+  background: var(--hover) !important;
 }
 
-.window-controls button:active {
+.sidebar-window-controls button:active {
   transform: scale(.96);
 }
 
-.window-controls .close:hover {
+.sidebar-window-controls .close:hover {
   color: #fff !important;
   background: #c43b32 !important;
 }
 
-.window-controls button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--editor-control-fg-strong) 64%, transparent);
+.sidebar-window-controls button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--text) 64%, transparent);
   outline-offset: -2px;
 }
 
-@media (prefers-reduced-transparency: reduce) {
-  .window-controls {
-    background: var(--surface-strong);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .window-controls {
-    animation-duration: 1.8s !important;
-  }
+.sidebar-collapsed .sidebar-window-controls {
+  display: none;
 }

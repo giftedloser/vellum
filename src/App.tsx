@@ -6,6 +6,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import FileTypeIcon from "./FileTypeIcon";
+import WindowControls from "./WindowControls";
 import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type RecentItem } from "./recent";
 import {
   ChevronDown,
@@ -16,8 +17,6 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
-  Maximize2,
-  Minus,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -637,6 +636,7 @@ function App() {
             <div className="brand" data-tauri-drag-region>
               <span className="brand-name" data-tauri-drag-region><span className="brand-initial">V</span><span className="brand-rest">ellum</span></span>
             </div>
+            <WindowControls />
           </header>
           <section className="sidebar-section pinned-section">
             <div className="section-label"><Pin size={11} /> Pinned</div>
@@ -664,7 +664,6 @@ function App() {
           </footer>
         </aside>
         <section className="main-pane">
-          <div className="window-controls-hotspot"><div className="window-controls" aria-label="Window controls"><button type="button" onClick={() => void appWindow?.minimize()} aria-label="Minimize"><Minus size={13} /></button><button type="button" onClick={() => void appWindow?.toggleMaximize()} aria-label="Maximize or restore"><Maximize2 size={12} /></button><button type="button" className="close" onClick={() => void appWindow?.close()} aria-label="Close"><X size={14} /></button></div></div>
           <div className="content-area">
             {error ? <div className="error-banner" role="alert"><span>{error}</span><button type="button" onClick={() => setError(undefined)} aria-label="Dismiss error"><X size={14} /></button></div> : null}
             {viewerWarning ? <div className="error-banner viewer-warning" role="status"><span>Some HTML resources or browser features were blocked or failed to load.</span><button type="button" onClick={() => setViewerWarning(false)} aria-label="Dismiss warning"><X size={14} /></button></div> : null}
@@ -749,7 +748,7 @@ function App() {
           <div className="setting-row range-row"><div><strong>Sidebar transparency</strong><span>Adjust the translucency of the saved workspace.</span></div><label><input aria-label="Sidebar transparency" type="range" min="65" max="100" value={preferences.sidebarOpacity} onChange={(event) => setPreferences((current) => ({ ...current, sidebarOpacity: Number(event.target.value) }))} /><span>{preferences.sidebarOpacity}%</span></label></div>
           <div className="setting-row"><div><strong>Sidebar</strong><span>Change the current sidebar layout without leaving settings.</span></div><button type="button" className="reset-button" onClick={() => setSidebarOpen((value) => !value)}>{sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}{sidebarOpen ? "Collapse" : "Expand"}</button></div>
           <div className="setting-row"><div><strong>Sidebar motion</strong><span>Choose how quickly the sidebar collapses and expands.</span></div><select aria-label="Sidebar motion" value={preferences.sidebarMotion} onChange={(event) => setPreferences((current) => ({ ...current, sidebarMotion: event.target.value as SidebarMotion }))}><option value="quick">Quick</option><option value="balanced">Balanced</option><option value="relaxed">Relaxed</option></select></div>
-          <div className="setting-row"><div><strong>Auto-hide controls</strong><span>Fade the document and window controls until the pointer approaches.</span></div><label className="switch"><input aria-label="Auto-hide floating controls" type="checkbox" checked={preferences.autoHideControls} onChange={(event) => setPreferences((current) => ({ ...current, autoHideControls: event.target.checked }))} /><span aria-hidden="true" /></label></div>
+          <div className="setting-row"><div><strong>Auto-hide controls</strong><span>Fade the document controls until the pointer approaches.</span></div><label className="switch"><input aria-label="Auto-hide document controls" type="checkbox" checked={preferences.autoHideControls} onChange={(event) => setPreferences((current) => ({ ...current, autoHideControls: event.target.checked }))} /><span aria-hidden="true" /></label></div>
           <h3 className="settings-group-label">Reading</h3>
           <div className="setting-row range-row"><div><strong>Viewer zoom</strong><span>Set the default zoom for Markdown and HTML documents.</span></div><label><input aria-label="Viewer zoom" type="range" min="50" max="200" step="10" value={preferences.viewerZoom} onChange={(event) => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Number(event.target.value) })); }} /><span>{preferences.viewerZoom}%</span></label></div>
           <div className="setting-row range-row"><div><strong>Reading width</strong><span>Set the maximum width of rendered Markdown.</span></div><label><input aria-label="Markdown reading width" type="range" min="680" max="1180" step="20" value={preferences.readingWidth} onChange={(event) => setPreferences((current) => ({ ...current, readingWidth: Number(event.target.value) }))} /><span>{preferences.readingWidth}px</span></label></div>
