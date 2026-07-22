@@ -156,6 +156,6 @@ The full reviews are available in [AUDIT.md](AUDIT.md), [RENDERER_AUDIT.md](REND
 
 The canonical application icons are `public/vellum-icon-dark.png` and `public/vellum-icon-light.png`. Native assets are regenerated with `npm run icons`, and the README wordmark is rendered from the bundled Style Script font.
 
-Vellum is available under the [MIT License](LICENSE). Style Script is licensed separately under the [SIL Open Font License 1.1](public/fonts/OFL.txt).
+Vellum is available under the [MIT License](LICENSE). Style Script is licensed separately under the [SIL Open Font License 1.1](public/fonts/OFL.txt). File-type artwork is documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 </details>

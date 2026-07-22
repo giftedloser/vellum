@@ -32,7 +32,7 @@
     "security": {
       "freezePrototype": true,
       "dangerousDisableAssetCspModification": ["script-src"],
-      "csp": "default-src 'self' data: blob: asset: http: https:; base-uri *; object-src 'none'; img-src 'self' data: blob: asset: file: http: https:; media-src 'self' data: blob: asset: file: http: https:; font-src 'self' data: blob: asset: http: https:; style-src 'self' 'unsafe-inline' data: blob: asset: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: asset: http: https:; connect-src 'self' data: blob: asset: http: https: ws: wss:; worker-src 'self' data: blob:; frame-src 'self' data: blob: asset: file: http: https:"
+      "csp": "default-src 'self' data: blob: asset: vellum-asset: http: https:; base-uri *; object-src 'none'; img-src 'self' data: blob: asset: vellum-asset: file: http: https:; media-src 'self' data: blob: asset: vellum-asset: file: http: https:; font-src 'self' data: blob: asset: vellum-asset: http: https:; style-src 'self' 'unsafe-inline' data: blob: asset: vellum-asset: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: asset: vellum-asset: http: https:; connect-src 'self' data: blob: asset: http: https: ws: wss:; worker-src 'self' data: blob: vellum-asset:; frame-src 'self' data: blob: asset: vellum-asset: file: http: https:"
     }
   },
   "bundle": {

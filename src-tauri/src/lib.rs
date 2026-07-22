@@ -7,7 +7,7 @@ use std::{
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::State;
+use tauri::{http, Manager, State};
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["md", "markdown", "html", "htm"];
 const MAX_DOCUMENT_BYTES: u64 = 32 * 1024 * 1024;
@@ -17,6 +17,7 @@ const MAX_SCAN_ENTRIES: usize = 20_000;
 #[derive(Default)]
 struct AppState {
     allowed_roots: Mutex<Vec<PathBuf>>,
+    asset_roots: Mutex<Vec<PathBuf>>,
 }
 
 #[derive(Serialize)]
@@ -132,6 +133,83 @@ fn is_authorized(path: &Path, roots: &[PathBuf]) -> bool {
     })
 }
 
+fn asset_root_for_document(
+    path: &Path,
+    allowed_roots: &[PathBuf],
+    asset_roots: &mut Vec<PathBuf>,
+) -> Result<usize, String> {
+    if !path.is_file() || !supported(path) || !is_authorized(path, allowed_roots) {
+        return Err("This document is not authorized for local assets.".into());
+    }
+    let root = path
+        .parent()
+        .ok_or_else(|| "This document has no local asset folder.".to_string())?
+        .to_path_buf();
+    if let Some(index) = asset_roots.iter().position(|candidate| candidate == &root) {
+        return Ok(index);
+    }
+    asset_roots.push(root);
+    Ok(asset_roots.len() - 1)
+}
+
+fn decode_url_path(path: &str) -> Result<String, String> {
+    let bytes = path.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let value = bytes
+                .get(index + 1..index + 3)
+                .and_then(|hex| std::str::from_utf8(hex).ok())
+                .and_then(|hex| u8::from_str_radix(hex, 16).ok())
+                .ok_or_else(|| "Invalid asset URL.".to_string())?;
+            decoded.push(value);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).map_err(|_| "Invalid asset URL.".to_string())
+}
+
+fn resolve_asset(request_path: &str, roots: &[PathBuf]) -> Result<PathBuf, String> {
+    let (root_index, relative) = request_path
+        .trim_start_matches('/')
+        .split_once('/')
+        .ok_or_else(|| "Invalid asset URL.".to_string())?;
+    let root = roots
+        .get(
+            root_index
+                .parse::<usize>()
+                .map_err(|_| "Invalid asset URL.".to_string())?,
+        )
+        .ok_or_else(|| "Unknown asset root.".to_string())?;
+    let path = root
+        .join(decode_url_path(relative)?)
+        .canonicalize()
+        .map_err(|_| "Asset not found.".to_string())?;
+    if !path.is_file() || !path.starts_with(root) {
+        return Err("Asset is outside the authorized document folder.".into());
+    }
+    Ok(path)
+}
+
+fn asset_response(
+    status: http::StatusCode,
+    body: Vec<u8>,
+    content_type: &str,
+) -> http::Response<Vec<u8>> {
+    http::Response::builder()
+        .status(status)
+        .header(http::header::CONTENT_TYPE, content_type)
+        .header(http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(http::header::CACHE_CONTROL, "no-store")
+        .header(http::header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .body(body)
+        .expect("valid asset response")
+}
+
 fn modified_ms(path: &Path) -> Result<u64, String> {
     let modified = fs::metadata(path)
         .map_err(|error| error.to_string())?
@@ -172,6 +250,37 @@ mod tests {
         assert!(is_authorized(&file, &roots));
         assert!(is_authorized(&directory.join("nested/page.html"), &roots));
         assert!(!is_authorized(Path::new("library/other.md"), &roots));
+    }
+
+    #[test]
+    fn html_document_can_load_sibling_javascript() {
+        let folder = unique_sibling(&env::temp_dir(), "asset-test");
+        fs::create_dir(&folder).unwrap();
+        let document = folder.join("menu.html");
+        let script = folder.join("menu.js");
+        fs::write(
+            &document,
+            r#"<button onclick="relativeMenu()">Menu</button><script src="./menu.js"></script>"#,
+        )
+        .unwrap();
+        fs::write(
+            &script,
+            "function relativeMenu() { document.body.dataset.open = 'true'; }",
+        )
+        .unwrap();
+        let document = document.canonicalize().unwrap();
+
+        let mut asset_roots = Vec::new();
+        let root =
+            asset_root_for_document(&document, std::slice::from_ref(&document), &mut asset_roots)
+                .unwrap();
+        let resolved = resolve_asset(&format!("/{root}/menu.js"), &asset_roots).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(resolved).unwrap(),
+            "function relativeMenu() { document.body.dataset.open = 'true'; }"
+        );
+        fs::remove_dir_all(folder).unwrap();
     }
 }
 
@@ -231,6 +340,23 @@ fn read_document(path: String, state: State<'_, AppState>) -> Result<String, Str
     }
 
     fs::read_to_string(canonical).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn document_asset_base(path: String, state: State<'_, AppState>) -> Result<String, String> {
+    let canonical = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let allowed_roots = state
+        .allowed_roots
+        .lock()
+        .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
+    let mut asset_roots = state
+        .asset_roots
+        .lock()
+        .map_err(|_| "Vellum could not access its asset authorization state.".to_string())?;
+    let index = asset_root_for_document(&canonical, &allowed_roots, &mut asset_roots)?;
+    Ok(format!("vellum-asset://localhost/{index}/"))
 }
 
 #[tauri::command]
@@ -330,11 +456,37 @@ fn write_document(
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .register_uri_scheme_protocol("vellum-asset", |context, request| {
+            let state = context.app_handle().state::<AppState>();
+            let path = state
+                .asset_roots
+                .lock()
+                .map_err(|_| "Asset authorization is unavailable.".to_string())
+                .and_then(|roots| resolve_asset(request.uri().path(), &roots));
+            match path.and_then(|path| {
+                let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
+                if metadata.len() > MAX_DOCUMENT_BYTES {
+                    return Err("Asset exceeds Vellum's 32 MB safety limit.".into());
+                }
+                let bytes = fs::read(&path).map_err(|error| error.to_string())?;
+                let mime =
+                    tauri::utils::mime_type::MimeType::parse(&bytes, &path.to_string_lossy());
+                Ok((bytes, mime))
+            }) {
+                Ok((bytes, mime)) => asset_response(http::StatusCode::OK, bytes, &mime),
+                Err(message) => asset_response(
+                    http::StatusCode::NOT_FOUND,
+                    message.into_bytes(),
+                    "text/plain",
+                ),
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             startup_document,
             scan_path,
             read_document,
+            document_asset_base,
             document_modified_ms,
             write_document
         ])

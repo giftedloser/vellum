@@ -5,6 +5,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import FileTypeIcon from "./FileTypeIcon";
+import { collapsedRecentCount, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type RecentItem } from "./recent";
 import {
   ChevronDown,
   ChevronRight,
@@ -49,6 +51,7 @@ type OpenDocument = {
   content: string;
   kind: "markdown" | "html";
   modifiedMs: number;
+  assetBaseUrl?: string;
   draft?: boolean;
 };
 
@@ -56,7 +59,6 @@ type Theme = "light" | "dark" | "system";
 type ResolvedTheme = Exclude<Theme, "system">;
 type ContextMenuState = { x: number; y?: number; bottom?: number; maxHeight: number; path?: string; root?: boolean };
 type ViewerMetrics = { contentWidth: number; viewportWidth: number };
-type RecentItem = { path: string; lastOpened: number };
 type EditorFont = "Caskaydia Code NF" | "JetBrains Mono NF" | "Cascadia Mono" | "Zed Mono NF";
 type SidebarMotion = "quick" | "balanced" | "relaxed";
 
@@ -163,20 +165,18 @@ function rootForPath(roots: Entry[], path: string) {
   return roots.find((entry) => pathIsInside(entry.path, path));
 }
 
-const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY},"*")})})()`;
+const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i"),warn=()=>parent.postMessage({type:"vellum-viewer-warning"},"*");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("error",warn,true);addEventListener("unhandledrejection",warn);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY},"*")})})()`;
 
-function prepareHtml(content: string, theme: ResolvedTheme) {
+function prepareHtml(content: string, theme: ResolvedTheme, baseUrl?: string) {
   const thumb = theme === "dark" ? "rgba(220,212,196,.24)" : "rgba(92,78,54,.28)";
-  const viewerStyle = `<style data-vellum-viewer>*{scrollbar-width:none}::-webkit-scrollbar{display:none;width:0;height:0}.vellum-scroll-indicator{position:fixed;z-index:2147483647;width:2px;border-radius:999px;background:${thumb};pointer-events:none;opacity:0;transition:opacity 120ms}</style><script data-vellum-viewer>${viewerScript}</script>`;
-  return /<\/head>/i.test(content)
-    ? content.replace(/<\/head>/i, `${viewerStyle}</head>`)
-    : `${viewerStyle}${content}`;
+  const viewer = `${baseUrl ? `<base href="${baseUrl}">` : ""}<style data-vellum-viewer>*{scrollbar-width:none}::-webkit-scrollbar{display:none;width:0;height:0}.vellum-scroll-indicator{position:fixed;z-index:2147483647;width:2px;border-radius:999px;background:${thumb};pointer-events:none;opacity:0;transition:opacity 120ms}</style><script data-vellum-viewer>${viewerScript}</script>`;
+  return /<head(?:\s[^>]*)?>/i.test(content)
+    ? content.replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}${viewer}`)
+    : `${viewer}${content}`;
 }
 
 function documentIcon(path: string, size = 15) {
-  return documentKind(path) === "html"
-    ? <FileCode2 size={size} className="icon-html" aria-hidden="true" />
-    : <FileText size={size} className="icon-markdown" aria-hidden="true" />;
+  return <FileTypeIcon kind={documentKind(path)} size={size} />;
 }
 
 function TreeNode({ entry, activePath, root = false, pinnedPaths, onOpen, onPin, onRemove, onContextMenu }: {
@@ -192,6 +192,7 @@ function TreeNode({ entry, activePath, root = false, pinnedPaths, onOpen, onPin,
   const [expanded, setExpanded] = useState(true);
   const isDirectory = entry.kind === "directory";
   const pinned = pinnedPaths?.includes(entry.path) ?? false;
+  const label = sidebarLabel(entry.name, !isDirectory);
 
   return (
     <div className={`tree-node ${root ? "tree-root" : ""}`}>
@@ -205,7 +206,7 @@ function TreeNode({ entry, activePath, root = false, pinnedPaths, onOpen, onPin,
         >
           <span className="tree-chevron">{isDirectory ? expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} /> : null}</span>
           {isDirectory ? expanded ? <FolderOpen size={16} className="icon-folder" /> : <Folder size={16} className="icon-folder" /> : documentIcon(entry.path)}
-          <span className="tree-label">{entry.name}</span>
+          <span className="tree-label">{label}</span>
         </button>
         {onPin ? (
           <button type="button" className="tree-remove tree-pin" onClick={() => onPin(entry.path)} title={pinned ? "Unpin" : "Pin"} aria-label={`${pinned ? "Unpin" : "Pin"} ${entry.name}`}>
@@ -235,12 +236,14 @@ function App() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
   const [contextMenuScrollHint, setContextMenuScrollHint] = useState<"down" | "up">();
+  const [recentExpanded, setRecentExpanded] = useState(false);
   const [viewerMetrics, setViewerMetrics] = useState<ViewerMetrics>();
   const [fitToWidth, setFitToWidth] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(readPreferences);
   const restoreDocumentOnStartup = useRef(preferences.rememberDocument);
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
   const [error, setError] = useState<string>();
+  const [viewerWarning, setViewerWarning] = useState(false);
   const settingsDialog = useRef<HTMLDialogElement>(null);
   const htmlFrame = useRef<HTMLIFrameElement>(null);
   const contextMenuScroll = useRef<HTMLDivElement>(null);
@@ -263,7 +266,7 @@ function App() {
   }, [contextMenu]);
 
   const touchRecent = useCallback((path: string) => {
-    setRecent((current) => [{ path, lastOpened: Date.now() }, ...current.filter((item) => item.path !== path)].slice(0, 30));
+    setRecent((current) => moveRecentToFront(current, path));
   }, []);
 
   const confirmDiscard = useCallback(() => !dirtyRef.current || window.confirm("Discard unsaved changes?"), []);
@@ -273,18 +276,26 @@ function App() {
     const request = ++openRequest.current;
     try {
       setError(undefined);
-      const [content, modifiedMs] = await Promise.all([
+      setViewerWarning(false);
+      const [content, modifiedMs, assetBaseUrl] = await Promise.all([
         invoke<string>("read_document", { path }),
         invoke<number>("document_modified_ms", { path }),
+        documentKind(path) === "html" ? invoke<string>("document_asset_base", { path }) : undefined,
       ]);
       if (request !== openRequest.current) return;
       setViewerMetrics(undefined);
       setFitToWidth(false);
-      setActiveDocument({ path, name: basename(path), content, kind: documentKind(path), modifiedMs });
+      setActiveDocument({ path, name: basename(path), content, kind: documentKind(path), modifiedMs, assetBaseUrl });
       setDraftContent(content);
       setEditMode(false);
-      const owner = rootForPath(rootsRef.current, path);
-      touchRecent(owner?.path ?? path);
+      let owner = rootForPath(rootsRef.current, path);
+      if (!owner) {
+        owner = await invoke<Entry>("scan_path", { path });
+        if (request !== openRequest.current) return;
+        rootsRef.current = [...rootsRef.current, owner];
+        setRoots((current) => current.some((entry) => entry.path === owner!.path) ? current : [...current, owner!]);
+      }
+      touchRecent(owner.path);
     } catch (cause) {
       if (request === openRequest.current) setError(String(cause));
     }
@@ -298,7 +309,6 @@ function App() {
       const entry = await invoke<Entry>("scan_path", { path: selected });
       setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
       rootsRef.current = rootsRef.current.some((item) => item.path === entry.path) ? rootsRef.current : [...rootsRef.current, entry];
-      touchRecent(entry.path);
       await openDocument(entry.path);
     } catch (cause) {
       setError(String(cause));
@@ -335,7 +345,8 @@ function App() {
 
       const modifiedMs = await invoke<number>("write_document", { path, content: draftContent });
       const entry = await invoke<Entry>("scan_path", { path });
-      setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: documentKind(entry.path), modifiedMs });
+      const assetBaseUrl = documentKind(entry.path) === "html" ? await invoke<string>("document_asset_base", { path: entry.path }) : undefined;
+      setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: documentKind(entry.path), modifiedMs, assetBaseUrl });
       setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
       touchRecent(entry.path);
     } catch (cause) {
@@ -352,6 +363,7 @@ function App() {
     setActiveDocument({ path: `draft://${name}`, name, content, kind, modifiedMs: 0, draft: true });
     setDraftContent(content);
     setViewerMetrics(undefined);
+    setViewerWarning(false);
     setFitToWidth(false);
     setEditMode(true);
   }, [confirmDiscard]);
@@ -360,6 +372,7 @@ function App() {
     if (!confirmDiscard()) return;
     openRequest.current += 1;
     setViewerMetrics(undefined);
+    setViewerWarning(false);
     setActiveDocument(undefined);
     setDraftContent("");
     setEditMode(false);
@@ -379,14 +392,16 @@ function App() {
       }));
       if (cancelled) return;
       const restored = entries.filter((entry): entry is Entry => Boolean(entry));
+      const missing = new Set(savedRoots.filter((_, index) => !entries[index]));
       setRoots(restored);
       rootsRef.current = restored;
-      setRecent((current) => current.length ? current : restored.map((entry, index) => ({ path: entry.path, lastOpened: Date.now() - index })));
+      setRecent((current) => current.length ? current.filter((item) => !missing.has(item.path)) : restored.map((entry, index) => ({ path: entry.path, lastOpened: Date.now() - index })));
+      setPinned((current) => current.filter((path) => !missing.has(path)));
       libraryRestored.current = true;
-      if (restoreDocumentOnStartup.current) {
-        const savedDocument = readStored<string | undefined>("vellum.document:v1", readStored<string | undefined>("vellum.activeTab:v1", undefined));
-        if (!cancelled && savedDocument) await openDocument(savedDocument);
-      }
+      const startupDocument = readStored<string | undefined>("vellum.startup-document:v1", undefined);
+      localStorage.removeItem("vellum.startup-document:v1");
+      const savedDocument = startupDocument ?? (restoreDocumentOnStartup.current ? readStored<string | undefined>("vellum.document:v1", readStored<string | undefined>("vellum.activeTab:v1", undefined)) : undefined);
+      if (!cancelled && savedDocument) await openDocument(savedDocument);
       if (!cancelled) documentRestored.current = true;
     };
     void restore();
@@ -501,6 +516,10 @@ function App() {
         if (Number.isFinite(contentWidth) && Number.isFinite(viewportWidth) && contentWidth > 0 && viewportWidth > 0) setViewerMetrics({ contentWidth, viewportWidth });
         return;
       }
+      if (event.data?.type === "vellum-viewer-warning") {
+        setViewerWarning(true);
+        return;
+      }
       if (event.data?.type !== "vellum-context-menu") return;
       const rect = htmlFrame.current.getBoundingClientRect();
       const x = Number(event.data.x);
@@ -559,7 +578,7 @@ function App() {
 
   const renderedHtml = useMemo(() => {
     if (!activeDocument || activeDocument.kind !== "html") return "";
-    return prepareHtml(draftContent, resolvedTheme);
+    return prepareHtml(draftContent, resolvedTheme, activeDocument.assetBaseUrl);
   }, [activeDocument, draftContent, resolvedTheme]);
 
   useEffect(() => {
@@ -576,6 +595,8 @@ function App() {
       const entry = findEntry(roots, item.path);
       return entry ? [entry] : [];
     });
+  const displayedRecentEntries = visibleRecents(recentEntries, recentExpanded);
+  const hiddenRecentCount = recentEntries.length - displayedRecentEntries.length;
 
   function removeSidebarItem(path: string) {
     setRecent((current) => current.filter((item) => item.path !== path));
@@ -631,7 +652,9 @@ function App() {
           <section className="sidebar-section recent-section">
             <div className="section-label"><RefreshCw size={11} /> Recent</div>
             <div className="tree">
-              {recentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
+              {displayedRecentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
+              {hiddenRecentCount > 0 ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(true)} aria-expanded="false">More ({hiddenRecentCount})</button> : null}
+              {recentExpanded && recentEntries.length > collapsedRecentCount ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(false)} aria-expanded="true">Show less</button> : null}
               {!recentEntries.length ? <div className="section-empty">Open a file or folder</div> : null}
             </div>
           </section>
@@ -648,6 +671,7 @@ function App() {
           <div className="window-controls-hotspot"><div className="window-controls" aria-label="Window controls"><button type="button" onClick={() => void appWindow?.minimize()} aria-label="Minimize"><Minus size={13} /></button><button type="button" onClick={() => void appWindow?.toggleMaximize()} aria-label="Maximize or restore"><Maximize2 size={12} /></button><button type="button" className="close" onClick={() => void appWindow?.close()} aria-label="Close"><X size={14} /></button></div></div>
           <div className="content-area">
             {error ? <div className="error-banner" role="alert"><span>{error}</span><button type="button" onClick={() => setError(undefined)} aria-label="Dismiss error"><X size={14} /></button></div> : null}
+            {viewerWarning ? <div className="error-banner viewer-warning" role="status"><span>Some HTML resources or browser features were blocked or failed to load.</span><button type="button" onClick={() => setViewerWarning(false)} aria-label="Dismiss warning"><X size={14} /></button></div> : null}
             {!activeDocument ? (
               <div className="welcome"><div className="welcome-content"><h1>Vellum</h1><p>A quiet place to read, edit, and organize Markdown and HTML.</p><div className="welcome-actions"><button type="button" onClick={choosePath}>Open a file</button><button type="button" className="secondary" onClick={chooseFolder}>Open a folder</button></div><div className="welcome-shortcuts"><span><kbd>Ctrl O</kbd> Open file</span><span><kbd>Ctrl Shift O</kbd> Open folder</span></div></div></div>
             ) : editMode ? (

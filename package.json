@@ -19,6 +19,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test:recents": "node scripts/check-recents.mjs",
     "preview": "vite preview",
     "icons": "node scripts/generate-icons.mjs",
     "pretauri": "npm run icons",
