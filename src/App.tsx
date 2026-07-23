@@ -16,6 +16,7 @@ import {
   Code2,
   FileCode2,
   FileText,
+  FileType2,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -918,7 +919,7 @@ function App() {
           <nav className="sidebar-section workspace-switch" aria-label="Workspace">
             {(["documents", "notes"] as Workspace[]).map((value) => (
               <button key={value} type="button" aria-label={value === "documents" ? "HTML and Markdown" : "TXT"} title={value === "documents" ? "HTML and Markdown" : "TXT"} aria-pressed={workspace === value} onClick={() => updateSession((current) => ({ ...current, workspace: value }))}>
-                {value === "documents" ? <Code2 size={13} /> : <FileText size={13} />}
+                {value === "documents" ? <Code2 size={13} /> : <FileType2 size={13} />}
               </button>
             ))}
           </nav>
@@ -1013,7 +1014,7 @@ function App() {
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newNote(); }}><StickyNote size={15} /><span><strong>New Note</strong><small>Create a persistent scratch note</small></span></button>
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("markdown"); }}><FileText size={15} /><span><strong>New Markdown</strong><small>Create an empty .md document</small></span></button>
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("html"); }}><FileCode2 size={15} /><span><strong>New HTML</strong><small>Create an HTML starter document</small></span></button>
-        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("text"); }}><FileText size={15} /><span><strong>New Text File</strong><small>Create an empty .txt document</small></span></button>
+        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("text"); }}><FileType2 className="icon-text" size={15} /><span><strong>New Text File</strong><small>Create an empty .txt document</small></span></button>
       </div> : null}
 
       {contextMenu ? <div className="context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y, bottom: contextMenu.bottom, maxHeight: contextMenu.maxHeight }} onPointerDown={(event) => event.stopPropagation()}><div ref={contextMenuScroll} className="context-menu-scroll" style={{ maxHeight: Math.max(0, contextMenu.maxHeight - 2) }} onScroll={(event) => { const menu = event.currentTarget; setContextMenuScrollHint(menu.scrollHeight <= menu.clientHeight + 1 ? undefined : menu.scrollTop + menu.clientHeight >= menu.scrollHeight - 1 ? "up" : "down"); }}>
@@ -1023,7 +1024,7 @@ function App() {
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newNote(); }}><StickyNote size={14} />New Note<span>Ctrl N</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("markdown"); }}><FileText size={14} />New Markdown</button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("html"); }}><FileCode2 size={14} />New HTML</button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("text"); }}><FileText size={14} />New Text File</button>
+        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("text"); }}><FileType2 className="icon-text" size={14} />New Text File</button>
         {contextMenu.path && isSupported(contextMenu.path) ? <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void openDocument(contextMenu.path!); }}>{documentIcon(contextMenu.path, 14)}Open selected</button> : null}
         <div className="context-menu-separator" />
         <div className="context-menu-label">Document</div>

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const files = ["index.html", "src/styles.css", "src/refinement.css", "src/final.css", "src/control-system.css", "src/editor.css", "src/App.tsx", "src/SourceEditor.tsx", "src/FileTypeIcon.tsx"];
 const allowedChromatic = new Set([
-  "#3b82f6", "#e44d26", "#4f7556", "#7f1d1d", "#b8463c", "#b83228", "#c43b32",
+  "#3b82f6", "#e44d26", "#7b5f9e", "#c1a4df", "#4f7556", "#7f1d1d", "#b8463c", "#b83228", "#c43b32",
   "rgba(157,43,34,.18)", "rgba(190,50,40,.08)", "rgba(190,50,40,.35)",
 ]);
 const allowedSyntaxColors = new Set([

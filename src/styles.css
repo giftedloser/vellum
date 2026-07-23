@@ -36,6 +36,7 @@
   --floating-control: oklch(0.2 0 0 / .76);
   --floating-control-strong: oklch(0.16 0 0 / .96);
   --floating-control-hover: oklch(0 0 0 / .08);
+  --txt-icon: #7b5f9e;
 }
 
 :root[data-theme="dark"] {
@@ -58,6 +59,7 @@
   --floating-control: oklch(0.94 0 0 / .78);
   --floating-control-strong: oklch(1 0 0 / .96);
   --floating-control-hover: oklch(1 0 0 / .09);
+  --txt-icon: #c1a4df;
 }
 
 * { box-sizing: border-box; }
@@ -150,7 +152,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .icon-folder { color: var(--muted); }
 .icon-html { color: #e44d26; }
 .icon-markdown { color: #3b82f6; }
-.icon-text { color: var(--muted); }
+.icon-text { color: var(--txt-icon); }
 .tree-row > .file-type-icon,
 .tree-row > .icon-folder { width: 14px; height: 14px; flex: 0 0 14px; }
 .recent-more { width: 100%; min-height: 25px; padding: 0 15px; text-align: left; font-size: 10px; }
