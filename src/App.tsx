@@ -7,11 +7,13 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import FileTypeIcon from "./FileTypeIcon";
 import WindowControls from "./WindowControls";
-import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type RecentItem } from "./recent";
+import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type DocumentKind, type RecentItem } from "./recent";
+import { createNote, emptySession, noteTitle, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
 import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Code2,
   FileCode2,
   FileText,
   Folder,
@@ -28,7 +30,9 @@ import {
   Save,
   Scan,
   Settings,
+  StickyNote,
   Sun,
+  Trash2,
   WrapText,
   X,
   ZoomIn,
@@ -48,7 +52,7 @@ type OpenDocument = {
   path: string;
   name: string;
   content: string;
-  kind: "markdown" | "html";
+  kind: DocumentKind;
   modifiedMs: number;
   assetBaseUrl?: string;
   draft?: boolean;
@@ -56,10 +60,11 @@ type OpenDocument = {
 
 type Theme = "light" | "dark" | "system";
 type ResolvedTheme = Exclude<Theme, "system">;
-type ContextMenuState = { x: number; y?: number; bottom?: number; maxHeight: number; path?: string; root?: boolean };
+type ContextMenuState = { x: number; y?: number; bottom?: number; maxHeight: number; path?: string; noteId?: string; root?: boolean };
 type ViewerMetrics = { contentWidth: number; viewportWidth: number };
 type EditorFont = "Caskaydia Code NF" | "JetBrains Mono NF" | "Cascadia Mono" | "Zed Mono NF";
 type SidebarMotion = "quick" | "balanced" | "relaxed";
+type CollapsibleSection = "pinned" | "open" | "recent";
 
 type Preferences = {
   theme: Theme;
@@ -78,7 +83,7 @@ type Preferences = {
 };
 
 const appWindow = isTauri() ? getCurrentWindow() : undefined;
-const allowedExtensions = ["md", "markdown", "html", "htm"];
+const allowedExtensions = ["md", "markdown", "html", "htm", "txt"];
 const defaultPreferences: Preferences = {
   theme: "system",
   interfaceScale: 92,
@@ -130,8 +135,9 @@ function isSupported(path: string) {
   return allowedExtensions.includes(extension(path));
 }
 
-function ensureExtension(path: string, kind: "markdown" | "html") {
-  return isSupported(path) ? path : `${path}.${kind === "html" ? "html" : "md"}`;
+function ensureExtension(path: string, kind: DocumentKind) {
+  const valid = kind === "html" ? ["html", "htm"] : kind === "markdown" ? ["md", "markdown"] : ["txt"];
+  return valid.includes(extension(path)) ? path : `${path}.${valid[0]}`;
 }
 
 function readStored<T>(key: string, fallback: T): T {
@@ -158,6 +164,17 @@ function pathIsInside(root: string, path: string) {
 
 function rootForPath(roots: Entry[], path: string) {
   return roots.find((entry) => pathIsInside(entry.path, path));
+}
+
+function filterEntryForWorkspace(entry: Entry, workspace: Workspace): Entry | undefined {
+  if (entry.kind === "file") {
+    const text = documentKind(entry.path) === "text";
+    return (workspace === "notes") === text ? entry : undefined;
+  }
+  return { ...entry, children: entry.children?.flatMap((child) => {
+    const filtered = filterEntryForWorkspace(child, workspace);
+    return filtered ? [filtered] : [];
+  }) };
 }
 
 const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i"),warn=()=>parent.postMessage({type:"vellum-viewer-warning"},"*");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("error",warn,true);addEventListener("unhandledrejection",warn);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY},"*")})})()`;
@@ -223,7 +240,11 @@ function App() {
   const [roots, setRoots] = useState<Entry[]>([]);
   const [recent, setRecent] = useState<RecentItem[]>(() => readStored("vellum.recent:v2", []));
   const [pinned, setPinned] = useState<string[]>(() => readStored("vellum.pinned:v2", []));
+  const [pinnedNotes, setPinnedNotes] = useState<string[]>(() => readStored("vellum.pinnedNotes:v1", []));
+  const [folderWorkspaces, setFolderWorkspaces] = useState<Record<string, Workspace>>(() => readStored("vellum.folderWorkspaces:v1", {}));
+  const [session, setSession] = useState<SessionState>(emptySession);
   const [activeDocument, setActiveDocument] = useState<OpenDocument>();
+  const [activeNoteId, setActiveNoteId] = useState<string>();
   const [draftContent, setDraftContent] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => readStored("vellum.sidebarOpen:v1", true));
@@ -232,10 +253,10 @@ function App() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
   const [contextMenuScrollHint, setContextMenuScrollHint] = useState<"down" | "up">();
   const [recentExpanded, setRecentExpanded] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Partial<Record<CollapsibleSection, boolean>>>(() => readStored("vellum.collapsedSections:v1", {}));
   const [viewerMetrics, setViewerMetrics] = useState<ViewerMetrics>();
   const [fitToWidth, setFitToWidth] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(readPreferences);
-  const restoreDocumentOnStartup = useRef(preferences.rememberDocument);
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
   const [error, setError] = useState<string>();
   const [viewerWarning, setViewerWarning] = useState(false);
@@ -244,16 +265,32 @@ function App() {
   const contextMenuScroll = useRef<HTMLDivElement>(null);
   const libraryRestored = useRef(false);
   const documentRestored = useRef(false);
+  const sessionReady = useRef(false);
+  const sessionWritable = useRef(true);
+  const sessionRef = useRef(session);
   const openRequest = useRef(0);
   const rootsRef = useRef<Entry[]>([]);
-  const dirtyRef = useRef(false);
 
   const activePath = activeDocument?.draft ? undefined : activeDocument?.path;
+  const activeNote = activeNoteId ? session.notes.find((note) => note.id === activeNoteId) : undefined;
+  const workspace = session.workspace;
+  const hasActiveItem = Boolean(activeDocument || activeNote);
   const htmlMode = activeDocument?.kind === "html";
   const dirty = Boolean(activeDocument && draftContent !== activeDocument.content);
+  const editorKey = activeNote ? `note:${activeNote.id}` : activeDocument ? `document:${activeDocument.path}` : "";
+  const editorLanguage = activeNote ? "text" : activeDocument?.kind;
+  const wordCount = draftContent.trim() ? draftContent.trim().split(/\s+/).length : 0;
 
   useEffect(() => { rootsRef.current = roots; }, [roots]);
-  useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
+  useEffect(() => { sessionRef.current = session; }, [session]);
+
+  const updateSession = useCallback((update: (current: SessionState) => SessionState) => {
+    setSession((current) => {
+      const next = update(current);
+      sessionRef.current = next;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const menu = contextMenuScroll.current;
@@ -264,25 +301,12 @@ function App() {
     setRecent((current) => moveRecentToFront(current, path));
   }, []);
 
-  const confirmDiscard = useCallback(() => !dirtyRef.current || window.confirm("Discard unsaved changes?"), []);
-
   const openDocument = useCallback(async (path: string) => {
-    if (!isSupported(path) || !confirmDiscard()) return;
+    if (!isSupported(path)) return;
     const request = ++openRequest.current;
     try {
       setError(undefined);
       setViewerWarning(false);
-      const [content, modifiedMs, assetBaseUrl] = await Promise.all([
-        invoke<string>("read_document", { path }),
-        invoke<number>("document_modified_ms", { path }),
-        documentKind(path) === "html" ? invoke<string>("document_asset_base", { path }) : undefined,
-      ]);
-      if (request !== openRequest.current) return;
-      setViewerMetrics(undefined);
-      setFitToWidth(false);
-      setActiveDocument({ path, name: basename(path), content, kind: documentKind(path), modifiedMs, assetBaseUrl });
-      setDraftContent(content);
-      setEditMode(false);
       let owner = rootForPath(rootsRef.current, path);
       if (!owner) {
         owner = await invoke<Entry>("scan_path", { path });
@@ -290,15 +314,36 @@ function App() {
         rootsRef.current = [...rootsRef.current, owner];
         setRoots((current) => current.some((entry) => entry.path === owner!.path) ? current : [...current, owner!]);
       }
-      touchRecent(owner.path);
+      const [content, modifiedMs, assetBaseUrl] = await Promise.all([
+        invoke<string>("read_document", { path }),
+        invoke<number>("document_modified_ms", { path }),
+        documentKind(path) === "html" ? invoke<string>("document_asset_base", { path }) : undefined,
+      ]);
+      if (request !== openRequest.current) return;
+      const recovery = sessionRef.current.documents.find((document) => document.path === path);
+      const restoredDraft = recovery?.content !== content ? recovery : undefined;
+      setViewerMetrics(undefined);
+      setFitToWidth(false);
+      setActiveNoteId(undefined);
+      const kind = documentKind(path);
+      setActiveDocument({ path, name: basename(path), content, kind, modifiedMs: restoredDraft?.baseModifiedMs ?? modifiedMs, assetBaseUrl });
+      setDraftContent(restoredDraft?.content ?? content);
+      setEditMode(kind === "text" || Boolean(restoredDraft));
+      updateSession((current) => ({
+        ...current,
+        documents: recovery?.content === content ? current.documents.filter((document) => document.path !== path) : current.documents,
+        active: { type: "document", path },
+        workspace: kind === "text" ? "notes" : "documents",
+      }));
+      touchRecent(path);
     } catch (cause) {
       if (request === openRequest.current) setError(String(cause));
     }
-  }, [confirmDiscard, touchRecent]);
+  }, [touchRecent, updateSession]);
 
   const choosePath = useCallback(async () => {
-    if (!confirmDiscard()) return;
-    const selected = await open({ multiple: false, directory: false, filters: [{ name: "Documents", extensions: allowedExtensions }] });
+    const notesWorkspace = sessionRef.current.workspace === "notes";
+    const selected = await open({ multiple: false, directory: false, filters: [{ name: notesWorkspace ? "Text" : "HTML and Markdown", extensions: notesWorkspace ? ["txt"] : ["md", "markdown", "html", "htm"] }] });
     if (typeof selected !== "string") return;
     try {
       const entry = await invoke<Entry>("scan_path", { path: selected });
@@ -308,28 +353,65 @@ function App() {
     } catch (cause) {
       setError(String(cause));
     }
-  }, [confirmDiscard, openDocument, touchRecent]);
+  }, [openDocument]);
 
   const chooseFolder = useCallback(async () => {
+    const targetWorkspace = sessionRef.current.workspace;
     const selected = await open({ multiple: false, directory: true });
     if (typeof selected !== "string") return;
     try {
       const entry = await invoke<Entry>("scan_path", { path: selected });
       setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
+      setFolderWorkspaces((current) => ({ ...current, [entry.path]: targetWorkspace }));
       touchRecent(entry.path);
+      updateSession((current) => ({ ...current, workspace: targetWorkspace }));
     } catch (cause) {
       setError(String(cause));
     }
-  }, [touchRecent]);
+  }, [touchRecent, updateSession]);
 
   const saveCurrent = useCallback(async (saveAs = false) => {
+    if (activeNote) {
+      try {
+        const safeTitle = noteTitle(activeNote).replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").trim().slice(0, 80) || activeNote.fallbackTitle;
+        const selected = await save({
+          defaultPath: `${safeTitle}.txt`,
+          filters: [{ name: "Text", extensions: ["txt"] }],
+        });
+        if (typeof selected !== "string") return;
+        const path = ensureExtension(selected, "text");
+        const modifiedMs = await invoke<number>("write_document", { path, content: draftContent });
+        const entry = await invoke<Entry>("scan_path", { path });
+        setActiveNoteId(undefined);
+        setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: "text", modifiedMs });
+        setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
+        if (pinnedNotes.includes(activeNote.id)) setPinned((current) => current.includes(entry.path) ? current : [...current, entry.path]);
+        setPinnedNotes((current) => current.filter((id) => id !== activeNote.id));
+        updateSession((current) => ({
+          ...current,
+          notes: current.notes.filter((note) => note.id !== activeNote.id),
+          documents: current.documents.filter((document) => document.path !== entry.path),
+          active: { type: "document", path: entry.path },
+          workspace: "notes",
+        }));
+        touchRecent(entry.path);
+      } catch (cause) {
+        setError(String(cause));
+      }
+      return;
+    }
     if (!activeDocument) return;
     try {
       let path = activeDocument.path;
       if (activeDocument.draft || saveAs) {
+        const filter = activeDocument.kind === "html"
+          ? { name: "HTML", extensions: ["html", "htm"] }
+          : activeDocument.kind === "markdown"
+            ? { name: "Markdown", extensions: ["md", "markdown"] }
+            : { name: "Text", extensions: ["txt"] };
         const selected = await save({
           defaultPath: activeDocument.name,
-          filters: [{ name: activeDocument.kind === "html" ? "HTML" : "Markdown", extensions: activeDocument.kind === "html" ? ["html", "htm"] : ["md", "markdown"] }],
+          filters: [filter],
         });
         if (typeof selected !== "string") return;
         path = ensureExtension(selected, activeDocument.kind);
@@ -343,40 +425,139 @@ function App() {
       const assetBaseUrl = documentKind(entry.path) === "html" ? await invoke<string>("document_asset_base", { path: entry.path }) : undefined;
       setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: documentKind(entry.path), modifiedMs, assetBaseUrl });
       setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
+      if (pinned.includes(activeDocument.path)) setPinned((current) => [...current.filter((path) => path !== activeDocument.path && path !== entry.path), entry.path]);
+      updateSession((current) => ({
+        ...current,
+        documents: current.documents.filter((document) => document.path !== activeDocument.path && document.path !== entry.path),
+        active: { type: "document", path: entry.path },
+        workspace: documentKind(entry.path) === "text" ? "notes" : "documents",
+      }));
       touchRecent(entry.path);
     } catch (cause) {
       setError(String(cause));
     }
-  }, [activeDocument, draftContent, touchRecent]);
+  }, [activeDocument, activeNote, draftContent, pinned, pinnedNotes, touchRecent, updateSession]);
 
-  const newDocument = useCallback((kind: "markdown" | "html") => {
-    if (!confirmDiscard()) return;
+  const newDocument = useCallback((kind: DocumentKind) => {
     const content = kind === "html"
       ? '<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Untitled</title>\n</head>\n<body>\n  \n</body>\n</html>\n'
       : "";
-    const name = kind === "html" ? "Untitled.html" : "Untitled.md";
-    setActiveDocument({ path: `draft://${name}`, name, content, kind, modifiedMs: 0, draft: true });
+    const name = kind === "html" ? "Untitled.html" : kind === "markdown" ? "Untitled.md" : "Untitled.txt";
+    const path = `draft://${crypto.randomUUID()}/${name}`;
+    setActiveNoteId(undefined);
+    setActiveDocument({ path, name, content, kind, modifiedMs: 0, draft: true });
     setDraftContent(content);
     setViewerMetrics(undefined);
     setViewerWarning(false);
     setFitToWidth(false);
     setEditMode(true);
-  }, [confirmDiscard]);
+    updateSession((current) => ({
+      ...current,
+      documents: [{ path, content, baseModifiedMs: 0, updatedAt: Date.now(), kind, name, draft: true }, ...current.documents],
+      active: { type: "document", path },
+      workspace: kind === "text" ? "notes" : "documents",
+    }));
+  }, [updateSession]);
 
   const closeDocument = useCallback(() => {
-    if (!confirmDiscard()) return;
     openRequest.current += 1;
     setViewerMetrics(undefined);
     setViewerWarning(false);
     setActiveDocument(undefined);
+    setActiveNoteId(undefined);
     setDraftContent("");
     setEditMode(false);
-  }, [confirmDiscard]);
+    updateSession((current) => ({ ...current, active: null }));
+  }, [updateSession]);
 
   const reloadDocument = useCallback(async () => {
-    if (!activeDocument || activeDocument.draft || !confirmDiscard()) return;
+    if (!activeDocument || activeDocument.draft || (dirty && !window.confirm("Discard this recovered draft and reload the file from disk?"))) return;
+    updateSession((current) => ({ ...current, documents: current.documents.filter((document) => document.path !== activeDocument.path) }));
     await openDocument(activeDocument.path);
-  }, [activeDocument, confirmDiscard, openDocument]);
+  }, [activeDocument, dirty, openDocument, updateSession]);
+
+  const openNote = useCallback((id: string) => {
+    const note = sessionRef.current.notes.find((item) => item.id === id);
+    if (!note) return;
+    openRequest.current += 1;
+    setActiveDocument(undefined);
+    setActiveNoteId(id);
+    setDraftContent(note.content);
+    setViewerMetrics(undefined);
+    setViewerWarning(false);
+    setEditMode(true);
+    updateSession((current) => ({ ...current, active: { type: "note", id }, workspace: "notes" }));
+  }, [updateSession]);
+
+  const openDraft = useCallback((path: string) => {
+    const draft = sessionRef.current.documents.find((document) => document.path === path && document.draft && document.kind && document.name);
+    if (!draft?.kind || !draft.name) return;
+    openRequest.current += 1;
+    setActiveNoteId(undefined);
+    setActiveDocument({ path, name: draft.name, content: draft.content, kind: draft.kind, modifiedMs: 0, draft: true });
+    setDraftContent(draft.content);
+    setViewerMetrics(undefined);
+    setViewerWarning(false);
+    setEditMode(true);
+    updateSession((current) => ({ ...current, active: { type: "document", path }, workspace: draft.kind === "text" ? "notes" : "documents" }));
+  }, [updateSession]);
+
+  const newNote = useCallback(() => {
+    const note = createNote(sessionRef.current.notes);
+    updateSession((current) => ({
+      ...current,
+      notes: [note, ...current.notes],
+      active: { type: "note", id: note.id },
+      workspace: "notes",
+    }));
+    setActiveDocument(undefined);
+    setActiveNoteId(note.id);
+    setDraftContent("");
+    setViewerMetrics(undefined);
+    setViewerWarning(false);
+    setEditMode(true);
+  }, [updateSession]);
+
+  const deleteNote = useCallback((id: string) => {
+    const note = sessionRef.current.notes.find((item) => item.id === id);
+    if (!note || !window.confirm(`Delete "${noteTitle(note)}"? This cannot be undone.`)) return;
+    updateSession((current) => ({
+      ...current,
+      notes: current.notes.filter((item) => item.id !== id),
+      active: current.active?.type === "note" && current.active.id === id ? null : current.active,
+    }));
+    setPinnedNotes((current) => current.filter((item) => item !== id));
+    if (activeNoteId === id) {
+      setActiveNoteId(undefined);
+      setDraftContent("");
+      setEditMode(false);
+    }
+  }, [activeNoteId, updateSession]);
+
+  const changeDraft = useCallback((content: string) => {
+    setDraftContent(content);
+    if (!activeNoteId) return;
+    updateSession((current) => ({
+      ...current,
+      notes: current.notes.map((note) => note.id === activeNoteId ? { ...note, content, updatedAt: Date.now() } : note),
+    }));
+  }, [activeNoteId, updateSession]);
+
+  useEffect(() => {
+    if (!sessionReady.current || !activeDocument) return;
+    updateSession((current) => ({
+      ...current,
+      documents: updateDocumentRecovery(
+        current.documents,
+        activeDocument.path,
+        draftContent,
+        activeDocument.modifiedMs,
+        activeDocument.content,
+        Date.now(),
+        activeDocument.draft ? { draft: true, kind: activeDocument.kind, name: activeDocument.name } : undefined,
+      ),
+    }));
+  }, [activeDocument, draftContent, updateSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -395,13 +576,35 @@ function App() {
       libraryRestored.current = true;
       const startupDocument = readStored<string | undefined>("vellum.startup-document:v1", undefined);
       localStorage.removeItem("vellum.startup-document:v1");
-      const savedDocument = startupDocument ?? (restoreDocumentOnStartup.current ? readStored<string | undefined>("vellum.document:v1", readStored<string | undefined>("vellum.activeTab:v1", undefined)) : undefined);
-      if (!cancelled && savedDocument) await openDocument(savedDocument);
+      let restoredSession = emptySession();
+      try {
+        const stored = isTauri()
+          ? await invoke<string | null>("load_session")
+          : localStorage.getItem("vellum.session:v1");
+        if (stored) restoredSession = JSON.parse(stored) as SessionState;
+      } catch (cause) {
+        sessionWritable.current = false;
+        if (!cancelled) setError(`Vellum could not load its recovery session: ${String(cause)}`);
+      }
+      if (cancelled) return;
+      sessionRef.current = restoredSession;
+      setSession(restoredSession);
+      sessionReady.current = true;
+      if (startupDocument) {
+        await openDocument(startupDocument);
+      } else if (restoredSession.active?.type === "note") {
+        openNote(restoredSession.active.id);
+      } else if (restoredSession.active?.type === "document") {
+        const activePath = restoredSession.active.path;
+        const activeRecovery = restoredSession.documents.find((document) => document.path === activePath);
+        if (activeRecovery?.draft) openDraft(activePath);
+        else await openDocument(activePath);
+      }
       if (!cancelled) documentRestored.current = true;
     };
     void restore();
     return () => { cancelled = true; };
-  }, [openDocument]);
+  }, [openDocument, openDraft, openNote]);
 
   useEffect(() => {
     const dialog = settingsDialog.current;
@@ -473,33 +676,50 @@ function App() {
   }, [roots]);
   useEffect(() => localStorage.setItem("vellum.recent:v2", JSON.stringify(recent)), [recent]);
   useEffect(() => localStorage.setItem("vellum.pinned:v2", JSON.stringify(pinned)), [pinned]);
+  useEffect(() => localStorage.setItem("vellum.pinnedNotes:v1", JSON.stringify(pinnedNotes)), [pinnedNotes]);
+  useEffect(() => localStorage.setItem("vellum.folderWorkspaces:v1", JSON.stringify(folderWorkspaces)), [folderWorkspaces]);
   useEffect(() => localStorage.setItem("vellum.sidebarOpen:v1", JSON.stringify(sidebarOpen)), [sidebarOpen]);
-  useEffect(() => {
-    if (!documentRestored.current) return;
-    if (preferences.rememberDocument && activePath) localStorage.setItem("vellum.document:v1", JSON.stringify(activePath));
-    else localStorage.removeItem("vellum.document:v1");
-    localStorage.removeItem("vellum.tabs:v1");
-    localStorage.removeItem("vellum.activeTab:v1");
-  }, [activePath, preferences.rememberDocument]);
+  useEffect(() => localStorage.setItem("vellum.collapsedSections:v1", JSON.stringify(collapsedSections)), [collapsedSections]);
+
+  const persistSession = useCallback(async (value: SessionState) => {
+    if (!sessionWritable.current) return;
+    const serialized = JSON.stringify(value);
+    if (isTauri()) await invoke("save_session", { session: serialized });
+    else localStorage.setItem("vellum.session:v1", serialized);
+  }, []);
 
   useEffect(() => {
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!dirty) return;
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [dirty]);
+    if (!sessionReady.current || !sessionWritable.current) return;
+    const timer = window.setTimeout(() => {
+      void persistSession(session).catch((cause) => setError(`Vellum could not save its recovery session: ${String(cause)}`));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [persistSession, session]);
+
+  useEffect(() => {
+    if (!documentRestored.current) return;
+    localStorage.removeItem("vellum.document:v1");
+    localStorage.removeItem("vellum.tabs:v1");
+    localStorage.removeItem("vellum.activeTab:v1");
+  }, [session.active]);
 
   useEffect(() => {
     if (!appWindow) return;
     let unlisten: (() => void) | undefined;
-    void appWindow.onCloseRequested((event) => {
-      if (dirtyRef.current && !window.confirm("Close Vellum and discard unsaved changes?")) event.preventDefault();
+    let closing = false;
+    void appWindow.onCloseRequested(async (event) => {
+      if (closing) return;
+      event.preventDefault();
+      try {
+        await persistSession(sessionRef.current);
+        closing = true;
+        await appWindow.destroy();
+      } catch (cause) {
+        setError(`Vellum could not preserve the current session: ${String(cause)}`);
+      }
     }).then((dispose) => { unlisten = dispose; });
     return () => unlisten?.();
-  }, []);
+  }, [persistSession]);
 
   useEffect(() => {
     const closeMenu = () => { setContextMenu(undefined); setAddMenuOpen(false); };
@@ -552,13 +772,14 @@ function App() {
     if (event.key === "Escape" && settingsOpen) { setSettingsOpen(false); return; }
     if (!modifier) return;
     const key = event.key.toLowerCase();
-    if (key === "s" && activeDocument) { event.preventDefault(); void saveCurrent(event.shiftKey); }
-    else if (key === "e" && activeDocument) { event.preventDefault(); setEditMode((value) => !value); }
+    if (key === "n") { event.preventDefault(); newNote(); }
+    else if (key === "s" && hasActiveItem) { event.preventDefault(); void saveCurrent(event.shiftKey); }
+    else if (key === "e" && activeDocument && activeDocument.kind !== "text") { event.preventDefault(); setEditMode((value) => !value); }
     else if (key === "o") { event.preventDefault(); void (event.shiftKey ? chooseFolder() : choosePath()); }
     else if (key === "b") { event.preventDefault(); setSidebarOpen((value) => !value); }
     else if (key === ",") { event.preventDefault(); setSettingsOpen(true); }
     else if (key === "r" && activeDocument && !editMode) { event.preventDefault(); void reloadDocument(); }
-    else if (key === "w" && activeDocument) { event.preventDefault(); closeDocument(); }
+    else if (key === "w" && hasActiveItem) { event.preventDefault(); closeDocument(); }
   });
 
   useEffect(() => {
@@ -581,27 +802,54 @@ function App() {
     htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: preferences.viewerZoom }, "*");
   }, [editMode, htmlMode, preferences.viewerZoom]);
 
-  const pinnedEntries = pinned.map((path) => findEntry(roots, path)).filter((entry): entry is Entry => Boolean(entry));
+  const pinnedEntries = pinned.flatMap((path) => {
+    if (session.documents.some((document) => document.path === path)) return [];
+    const entry = findEntry(roots, path);
+    if (entry?.kind === "directory" && (folderWorkspaces[path] ?? "documents") !== workspace) return [];
+    const filtered = entry ? filterEntryForWorkspace(entry, workspace) : undefined;
+    return filtered ? [filtered] : [];
+  });
   const pinnedSet = new Set(pinned);
+  const workspaceProgressItems = session.documents
+    .filter((item) => (workspace === "notes") === ((item.kind ?? documentKind(item.path)) === "text"));
+  const pinnedProgressItems = workspaceProgressItems.filter((item) => pinned.includes(item.path));
+  const openItems = workspaceProgressItems
+    .filter((item) => !pinned.includes(item.path));
+  const openPaths = new Set(openItems.map((item) => item.path));
   const recentEntries = [...recent]
     .sort((a, b) => b.lastOpened - a.lastOpened)
     .flatMap((item) => {
-      if (pinnedSet.has(item.path)) return [];
+      if (pinnedSet.has(item.path) || openPaths.has(item.path)) return [];
       const entry = findEntry(roots, item.path);
-      return entry ? [entry] : [];
+      if (entry?.kind === "directory" && (folderWorkspaces[item.path] ?? "documents") !== workspace) return [];
+      const filtered = entry ? filterEntryForWorkspace(entry, workspace) : undefined;
+      if (!filtered) return [];
+      return [filtered];
     });
   const displayedRecentEntries = visibleRecents(recentEntries, recentExpanded);
   const hiddenRecentCount = recentEntries.length - displayedRecentEntries.length;
+  const displayedNotes = session.notes;
+  const pinnedInternalNotes = displayedNotes.filter((note) => pinnedNotes.includes(note.id));
+  const inProgressInternalNotes = displayedNotes.filter((note) => !pinnedNotes.includes(note.id));
 
   function removeSidebarItem(path: string) {
     setRecent((current) => current.filter((item) => item.path !== path));
     setPinned((current) => current.filter((item) => item !== path));
     setRoots((current) => current.filter((entry) => entry.path !== path));
+    setFolderWorkspaces((current) => Object.fromEntries(Object.entries(current).filter(([item]) => item !== path)));
   }
 
   function togglePin(path: string) {
     setPinned((current) => current.includes(path) ? current.filter((item) => item !== path) : [...current, path]);
     if (!recent.some((item) => item.path === path)) touchRecent(path);
+  }
+
+  function toggleNotePin(id: string) {
+    setPinnedNotes((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  function toggleSection(section: CollapsibleSection) {
+    setCollapsedSections((current) => ({ ...current, [section]: !current[section] }));
   }
 
   function toggleTheme() {
@@ -613,7 +861,7 @@ function App() {
     htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-measure" }, "*");
   }
 
-  function showContextMenu(event: ReactMouseEvent, path?: string, root = false) {
+  function showContextMenu(event: ReactMouseEvent, path?: string, root = false, noteId?: string) {
     event.preventDefault();
     event.stopPropagation();
     setAddMenuOpen(false);
@@ -623,36 +871,82 @@ function App() {
       ...(menuY > window.innerHeight / 2 ? { bottom: 8 } : { y: menuY }),
       maxHeight: menuY > window.innerHeight / 2 ? window.innerHeight - 16 : window.innerHeight - menuY - 8,
       path,
+      noteId,
       root,
     });
+  }
+
+  function renderNoteRow(note: Note) {
+    const notePinned = pinnedNotes.includes(note.id);
+    return (
+      <div key={note.id} className={`tree-row-wrap note-row ${activeNoteId === note.id ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, undefined, false, note.id)}>
+        <button type="button" className="tree-row" onClick={() => openNote(note.id)} title={noteTitle(note)}>
+          <span className="tree-chevron" />
+          <FileTypeIcon kind="text" size={13} />
+          <span className="tree-label">{noteTitle(note)}</span><span className="unsaved-dot sidebar-unsaved-dot" aria-label="Unsaved" />
+        </button>
+        <button type="button" className="tree-remove tree-pin" onClick={() => toggleNotePin(note.id)} title={notePinned ? "Unpin" : "Pin"} aria-label={`${notePinned ? "Unpin" : "Pin"} ${noteTitle(note)}`}>{notePinned ? <PinOff size={12} /> : <Pin size={12} />}</button>
+      </div>
+    );
+  }
+
+  function renderProgressRow(item: DocumentRecovery) {
+    const kind = item.kind ?? documentKind(item.path);
+    const name = item.name ?? basename(item.path);
+    const itemPinned = pinned.includes(item.path);
+    return (
+      <div key={item.path} className={`tree-row-wrap pinnable-row ${activeDocument?.path === item.path ? "active" : ""}`}>
+        <button type="button" className="tree-row" onClick={() => item.draft ? openDraft(item.path) : void openDocument(item.path)} title={name}>
+          <span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} /><span className="tree-label">{sidebarLabel(name, true)}</span><span className="unsaved-dot sidebar-unsaved-dot" aria-label="Unsaved" />
+        </button>
+        <button type="button" className="tree-remove tree-pin" onClick={() => togglePin(item.path)} title={itemPinned ? "Unpin" : "Pin"} aria-label={`${itemPinned ? "Unpin" : "Pin"} ${name}`}>{itemPinned ? <PinOff size={12} /> : <Pin size={12} />}</button>
+      </div>
+    );
   }
 
   return (
     <main className={`app-shell ${htmlMode ? "html-mode" : ""} ${sidebarOpen ? "" : "sidebar-collapsed"} ${preferences.autoHideControls ? "" : "controls-always-visible"}`} onContextMenu={showContextMenu}>
       <div className={`global-drag-region ${sidebarOpen ? "sidebar-visible" : ""}`} role="presentation" data-tauri-drag-region onDoubleClick={() => appWindow?.toggleMaximize()} />
       <section className="workspace">
-        <aside className="sidebar" aria-label="Document sidebar and application controls">
+        <aside className="sidebar" aria-label="Workspace sidebar and application controls">
           <header className="sidebar-titlebar" data-tauri-drag-region>
             <div className="brand" data-tauri-drag-region>
               <span className="brand-name" data-tauri-drag-region><span className="brand-initial">V</span><span className="brand-rest">ellum</span></span>
             </div>
             <WindowControls />
           </header>
+          <nav className="sidebar-section workspace-switch" aria-label="Workspace">
+            {(["documents", "notes"] as Workspace[]).map((value) => (
+              <button key={value} type="button" aria-label={value === "documents" ? "HTML and Markdown" : "TXT"} title={value === "documents" ? "HTML and Markdown" : "TXT"} aria-pressed={workspace === value} onClick={() => updateSession((current) => ({ ...current, workspace: value }))}>
+                {value === "documents" ? <Code2 size={13} /> : <FileText size={13} />}
+              </button>
+            ))}
+          </nav>
           <section className="sidebar-section pinned-section">
-            <div className="section-label"><Pin size={11} /> Pinned</div>
-            <div className="tree">
+            <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.pinned} onClick={() => toggleSection("pinned")}>{collapsedSections.pinned ? <ChevronRight size={11} /> : <ChevronDown size={11} />}Pinned</button>
+            {!collapsedSections.pinned ? <div className="tree">
+              {workspace === "notes" ? pinnedInternalNotes.map(renderNoteRow) : null}
+              {pinnedProgressItems.map(renderProgressRow)}
               {pinnedEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
-              {!pinnedEntries.length ? <div className="section-empty">Nothing pinned</div> : null}
-            </div>
+              {!pinnedEntries.length && !pinnedProgressItems.length && (workspace !== "notes" || !pinnedInternalNotes.length) ? <div className="section-empty">Nothing pinned</div> : null}
+            </div> : null}
           </section>
-          <section className="sidebar-section recent-section">
-            <div className="section-label"><RefreshCw size={11} /> Recent</div>
-            <div className="tree">
+          <section className="sidebar-section open-section">
+            <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.open} onClick={() => toggleSection("open")}>{collapsedSections.open ? <ChevronRight size={11} /> : <ChevronDown size={11} />}In Progress</button>
+            {!collapsedSections.open ? <div className="tree">
+              {workspace === "notes" ? inProgressInternalNotes.map(renderNoteRow) : null}
+              {openItems.map(renderProgressRow)}
+              {!openItems.length && (workspace !== "notes" || !inProgressInternalNotes.length) ? <div className="section-empty">Nothing in progress</div> : null}
+            </div> : null}
+          </section>
+          <section className={`sidebar-section recent-section ${collapsedSections.recent ? "collapsed" : ""}`}>
+            <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.recent} onClick={() => toggleSection("recent")}>{collapsedSections.recent ? <ChevronRight size={11} /> : <ChevronDown size={11} />}Recent</button>
+            {!collapsedSections.recent ? <div className="tree">
               {displayedRecentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
               {hiddenRecentCount > 0 ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(true)} aria-expanded="false">More ({hiddenRecentCount})</button> : null}
               {recentExpanded && recentEntries.length > collapsedRecentCount ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(false)} aria-expanded="true">Show less</button> : null}
-              {!recentEntries.length ? <div className="section-empty">Open a file or folder</div> : null}
-            </div>
+              {!recentEntries.length ? <div className="section-empty">No recent items</div> : null}
+            </div> : null}
           </section>
           <footer className="sidebar-controls" aria-label="Viewer and application controls">
             <nav className="sidebar-command-bar" aria-label="Application controls">
@@ -667,27 +961,31 @@ function App() {
           <div className="content-area">
             {error ? <div className="error-banner" role="alert"><span>{error}</span><button type="button" onClick={() => setError(undefined)} aria-label="Dismiss error"><X size={14} /></button></div> : null}
             {viewerWarning ? <div className="error-banner viewer-warning" role="status"><span>Some HTML resources or browser features were blocked or failed to load.</span><button type="button" onClick={() => setViewerWarning(false)} aria-label="Dismiss warning"><X size={14} /></button></div> : null}
-            {!activeDocument ? (
-              <div className="welcome"><div className="welcome-content"><h1>Vellum</h1><p>A quiet place to read, edit, and organize Markdown and HTML.</p><div className="welcome-actions"><button type="button" onClick={choosePath}>Open a file</button><button type="button" className="secondary" onClick={chooseFolder}>Open a folder</button></div><div className="welcome-shortcuts"><span><kbd>Ctrl O</kbd> Open file</span><span><kbd>Ctrl Shift O</kbd> Open folder</span></div></div></div>
-            ) : editMode ? (
-              <div className="editor-shell"><Suspense fallback={<div className="welcome"><p>Loading editor…</p></div>}><SourceEditor value={draftContent} language={activeDocument.kind} wrap={preferences.editorWrap} fontSize={preferences.editorFontSize} fontFamily={editorFonts[preferences.editorFont]} onChange={setDraftContent} /></Suspense></div>
-            ) : activeDocument.kind === "markdown" ? (
+            {!hasActiveItem ? (
+              <div className="welcome"><div className="welcome-content"><h1>Vellum</h1><p>A quiet place to read, edit, and organize documents and notes.</p><div className="welcome-actions"><button type="button" onClick={choosePath}>Open a file</button><button type="button" className="secondary" onClick={newNote}>New note</button></div><div className="welcome-shortcuts"><span><kbd>Ctrl O</kbd> Open file</span><span><kbd>Ctrl N</kbd> New note</span></div></div></div>
+            ) : activeNote || activeDocument?.kind === "text" || editMode ? (
+              <div className="editor-shell"><Suspense fallback={<div className="welcome"><p>Loading editor…</p></div>}><SourceEditor key={editorKey} value={draftContent} language={editorLanguage!} wrap={preferences.editorWrap} fontSize={preferences.editorFontSize} fontFamily={editorFonts[preferences.editorFont]} onChange={changeDraft} /></Suspense></div>
+            ) : activeDocument?.kind === "markdown" ? (
               <article key={activeDocument.path} className="document markdown-body" dangerouslySetInnerHTML={{ __html: renderedMarkdown }} />
-            ) : (
+            ) : activeDocument ? (
               <iframe key={activeDocument.path} ref={htmlFrame} className="html-frame" title={activeDocument.name} srcDoc={renderedHtml} sandbox="allow-forms allow-modals allow-popups allow-scripts" allow="clipboard-write" referrerPolicy="no-referrer" onLoad={() => { htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: preferences.viewerZoom }, "*"); htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-measure" }, "*"); }} />
-            )}
+            ) : null}
           </div>
-          {activeDocument ? <div className="document-controls-wrap"><div className="document-controls" aria-label={editMode ? "Editor controls" : "Viewer controls"}>
-            <div className="document-mode-toggle" aria-label="Document mode">
+          {hasActiveItem ? <div className="document-controls-wrap"><div className="document-controls" aria-label={activeNote || editMode ? "Editor controls" : "Viewer controls"}>
+            {activeDocument && activeDocument.kind !== "text" ? <><div className="document-mode-toggle" aria-label="Document mode">
               <button type="button" className={!editMode ? "active" : ""} aria-pressed={!editMode} onClick={() => setEditMode(false)}>View</button>
               <button type="button" className={editMode ? "active" : ""} aria-pressed={editMode} onClick={() => setEditMode(true)}>Edit{dirty ? <span className="unsaved-dot" aria-label="Unsaved changes" /> : null}</button>
             </div>
-            <span className="control-divider" aria-hidden="true" />
-            {editMode ? <>
-              <button type="button" disabled={!dirty && !activeDocument.draft} onClick={() => void saveCurrent(false)} title="Save (Ctrl+S)" aria-label="Save"><Save size={14} /></button>
+            <span className="control-divider" aria-hidden="true" /></> : null}
+            {activeNote || activeDocument?.kind === "text" || editMode ? <>
+              <button type="button" disabled={!activeNote && !dirty && !activeDocument?.draft} onClick={() => void saveCurrent(false)} title="Save (Ctrl+S)" aria-label="Save"><Save size={14} /></button>
               <button type="button" className="save-as-control" onClick={() => void saveCurrent(true)} title="Save As (Ctrl+Shift+S)">Save As</button>
-              <button type="button" disabled={!dirty} onClick={() => setDraftContent(activeDocument.content)} title="Revert" aria-label="Revert unsaved changes"><RotateCcw size={14} /></button>
+              {!activeNote && activeDocument ? <button type="button" disabled={!dirty} onClick={() => {
+                setDraftContent(activeDocument.content);
+                updateSession((current) => ({ ...current, documents: current.documents.filter((document) => document.path !== activeDocument.path) }));
+              }} title="Revert" aria-label="Revert unsaved changes"><RotateCcw size={14} /></button> : null}
               <button type="button" className={preferences.editorWrap ? "active" : ""} onClick={() => setPreferences((current) => ({ ...current, editorWrap: !current.editorWrap }))} title="Word wrap" aria-label="Toggle word wrap"><WrapText size={14} /></button>
+              {editorLanguage === "text" ? <div className="editor-counts" aria-label={`${wordCount} words, ${draftContent.length} characters`}><span>{wordCount} words</span><span>{draftContent.length} characters</span></div> : null}
               <span className="control-divider" aria-hidden="true" />
               <button type="button" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: Math.max(11, current.editorFontSize - 1) }))} title="Decrease editor text" aria-label="Decrease editor text"><ZoomOut size={14} /></button>
               <button type="button" className="zoom-value" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: 14 }))} title="Reset editor text size">{preferences.editorFontSize}px</button>
@@ -709,32 +1007,37 @@ function App() {
       </section>
 
       {addMenuOpen ? <div className="sidebar-add-menu" role="menu" aria-label="Add to sidebar" onPointerDown={(event) => event.stopPropagation()}>
-        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); void choosePath(); }}><FileText size={15} /><span><strong>Add file</strong><small>Choose Markdown or HTML</small></span></button>
+        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); void choosePath(); }}><FileText size={15} /><span><strong>Add file</strong><small>Choose Markdown, HTML, or text</small></span></button>
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); void chooseFolder(); }}><FolderPlus size={15} /><span><strong>Add folder</strong><small>Browse documents in the sidebar</small></span></button>
         <div className="sidebar-add-separator" />
+        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newNote(); }}><StickyNote size={15} /><span><strong>New Note</strong><small>Create a persistent scratch note</small></span></button>
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("markdown"); }}><FileText size={15} /><span><strong>New Markdown</strong><small>Create an empty .md document</small></span></button>
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("html"); }}><FileCode2 size={15} /><span><strong>New HTML</strong><small>Create an HTML starter document</small></span></button>
+        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("text"); }}><FileText size={15} /><span><strong>New Text File</strong><small>Create an empty .txt document</small></span></button>
       </div> : null}
 
       {contextMenu ? <div className="context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y, bottom: contextMenu.bottom, maxHeight: contextMenu.maxHeight }} onPointerDown={(event) => event.stopPropagation()}><div ref={contextMenuScroll} className="context-menu-scroll" style={{ maxHeight: Math.max(0, contextMenu.maxHeight - 2) }} onScroll={(event) => { const menu = event.currentTarget; setContextMenuScrollHint(menu.scrollHeight <= menu.clientHeight + 1 ? undefined : menu.scrollTop + menu.clientHeight >= menu.scrollHeight - 1 ? "up" : "down"); }}>
         <div className="context-menu-label">Open</div>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void choosePath(); }}><Plus size={14} />Open file<span>Ctrl O</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void chooseFolder(); }}><FolderPlus size={14} />Open folder<span>Ctrl Shift O</span></button>
+        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newNote(); }}><StickyNote size={14} />New Note<span>Ctrl N</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("markdown"); }}><FileText size={14} />New Markdown</button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("html"); }}><FileCode2 size={14} />New HTML</button>
+        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("text"); }}><FileText size={14} />New Text File</button>
         {contextMenu.path && isSupported(contextMenu.path) ? <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void openDocument(contextMenu.path!); }}>{documentIcon(contextMenu.path, 14)}Open selected</button> : null}
         <div className="context-menu-separator" />
         <div className="context-menu-label">Document</div>
         <button type="button" role="menuitem" disabled={!activeDocument || activeDocument.draft} onClick={() => { setContextMenu(undefined); void reloadDocument(); }}><RefreshCw size={14} />Reload<span>Ctrl R</span></button>
-        <button type="button" role="menuitem" disabled={!activeDocument} onClick={() => { setContextMenu(undefined); void saveCurrent(false); }}><Save size={14} />Save<span>Ctrl S</span></button>
-        <button type="button" role="menuitem" disabled={!activeDocument} onClick={() => { setContextMenu(undefined); setEditMode((value) => !value); }}>{editMode ? <FileText size={14} /> : <FileCode2 size={14} />}{editMode ? "View document" : "Edit source"}<span>Ctrl E</span></button>
-        <button type="button" role="menuitem" disabled={!activeDocument} onClick={() => { setContextMenu(undefined); closeDocument(); }}><X size={14} />Close<span>Ctrl W</span></button>
+        <button type="button" role="menuitem" disabled={!hasActiveItem} onClick={() => { setContextMenu(undefined); void saveCurrent(false); }}><Save size={14} />Save<span>Ctrl S</span></button>
+        <button type="button" role="menuitem" disabled={!activeDocument || activeDocument.kind === "text"} onClick={() => { setContextMenu(undefined); setEditMode((value) => !value); }}>{editMode ? <FileText size={14} /> : <FileCode2 size={14} />}{editMode ? "View document" : "Edit source"}<span>Ctrl E</span></button>
+        <button type="button" role="menuitem" disabled={!hasActiveItem} onClick={() => { setContextMenu(undefined); closeDocument(); }}><X size={14} />Close<span>Ctrl W</span></button>
         <div className="context-menu-separator" />
         <div className="context-menu-label">View</div>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: 100 })); }}><ZoomIn size={14} />Reset zoom<span>{preferences.viewerZoom}%</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSidebarOpen((value) => !value); }}>{sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}{sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}<span>Ctrl B</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); toggleTheme(); }}>{resolvedTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />}Switch theme</button>
         {contextMenu.path ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); togglePin(contextMenu.path!); }}>{pinned.includes(contextMenu.path) ? <PinOff size={14} /> : <Pin size={14} />}{pinned.includes(contextMenu.path) ? "Unpin" : "Pin"}</button>{contextMenu.root ? <button type="button" role="menuitem" className="context-danger" onClick={() => { setContextMenu(undefined); removeSidebarItem(contextMenu.path!); }}><X size={14} />Remove from sidebar</button> : null}</> : null}
+        {contextMenu.noteId ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); toggleNotePin(contextMenu.noteId!); }}>{pinnedNotes.includes(contextMenu.noteId) ? <PinOff size={14} /> : <Pin size={14} />}{pinnedNotes.includes(contextMenu.noteId) ? "Unpin note" : "Pin note"}</button><button type="button" role="menuitem" className="context-danger" onClick={() => { const id = contextMenu.noteId!; setContextMenu(undefined); deleteNote(id); }}><Trash2 size={14} />Delete note</button></> : null}
         <div className="context-menu-separator" />
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSettingsOpen(true); }}><Settings size={14} />Settings<span>Ctrl ,</span></button>
       </div>{contextMenuScrollHint ? <div className="context-menu-more" aria-hidden="true">{contextMenuScrollHint === "up" ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</div> : null}</div> : null}
@@ -755,11 +1058,9 @@ function App() {
           <div className="setting-row range-row"><div><strong>Text scale</strong><span>Scale rendered document typography.</span></div><label><input aria-label="Markdown text scale" type="range" min="85" max="125" step="5" value={preferences.fontScale} onChange={(event) => setPreferences((current) => ({ ...current, fontScale: Number(event.target.value) }))} /><span>{preferences.fontScale}%</span></label></div>
           <div className="setting-row range-row"><div><strong>Line spacing</strong><span>Adjust the rhythm of rendered Markdown paragraphs.</span></div><label><input aria-label="Markdown line spacing" type="range" min="145" max="195" step="5" value={preferences.lineHeight} onChange={(event) => setPreferences((current) => ({ ...current, lineHeight: Number(event.target.value) }))} /><span>{preferences.lineHeight}%</span></label></div>
           <h3 className="settings-group-label">Editor</h3>
-          <div className="setting-row"><div><strong>Word wrap</strong><span>Wrap long Markdown and HTML lines by default.</span></div><label className="switch"><input aria-label="Editor word wrap" type="checkbox" checked={preferences.editorWrap} onChange={(event) => setPreferences((current) => ({ ...current, editorWrap: event.target.checked }))} /><span aria-hidden="true" /></label></div>
-          <div className="setting-row"><div><strong>Code font</strong><span>Use an installed coding font with safe system fallbacks.</span></div><select aria-label="Editor code font" value={preferences.editorFont} onChange={(event) => setPreferences((current) => ({ ...current, editorFont: event.target.value as EditorFont }))}>{editorFontNames.map((font) => <option key={font} style={{ fontFamily: editorFonts[font] }}>{font}</option>)}</select></div>
+          <div className="setting-row"><div><strong>Word wrap</strong><span>Wrap long lines in every editor mode.</span></div><label className="switch"><input aria-label="Editor word wrap" type="checkbox" checked={preferences.editorWrap} onChange={(event) => setPreferences((current) => ({ ...current, editorWrap: event.target.checked }))} /><span aria-hidden="true" /></label></div>
+          <div className="setting-row"><div><strong>Editor font</strong><span>Use an installed editor font with safe system fallbacks.</span></div><select aria-label="Editor font" value={preferences.editorFont} onChange={(event) => setPreferences((current) => ({ ...current, editorFont: event.target.value as EditorFont }))}>{editorFontNames.map((font) => <option key={font} style={{ fontFamily: editorFonts[font] }}>{font}</option>)}</select></div>
           <div className="setting-row range-row"><div><strong>Editor text size</strong><span>Adjust source text without changing rendered documents.</span></div><label><input aria-label="Editor text size" type="range" min="11" max="22" value={preferences.editorFontSize} onChange={(event) => setPreferences((current) => ({ ...current, editorFontSize: Number(event.target.value) }))} /><span>{preferences.editorFontSize}px</span></label></div>
-          <h3 className="settings-group-label">Session</h3>
-          <div className="setting-row"><div><strong>Restore document</strong><span>Reopen the last viewed document when Vellum starts.</span></div><label className="switch"><input aria-label="Restore previous document" type="checkbox" checked={preferences.rememberDocument} onChange={(event) => setPreferences((current) => ({ ...current, rememberDocument: event.target.checked }))} /><span aria-hidden="true" /></label></div>
           <div className="setting-row"><div><strong>Reset appearance</strong><span>Restore Vellum's default scale, reading, editor, and theme settings.</span></div><button type="button" className="reset-button" onClick={() => setPreferences(defaultPreferences)}><RefreshCw size={14} /> Reset</button></div>
         </section>
       </dialog>

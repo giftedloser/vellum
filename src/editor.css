@@ -292,7 +292,14 @@
 
 .sidebar-section.recent-section {
   min-height: 0;
-  flex: 1;
+  flex: none;
+  max-height: 42%;
+}
+
+.pinned-section .tree,
+.open-section .tree,
+.recent-section .tree {
+  flex: none;
 }
 
 .tree-pin {

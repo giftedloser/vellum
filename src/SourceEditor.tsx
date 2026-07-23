@@ -4,14 +4,14 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { html } from "@codemirror/lang-html";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { highlightSelectionMatches, openSearchPanel, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, drawSelection, dropCursor, EditorView, keymap, type DecorationSet, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
 type Props = {
   value: string;
-  language: "markdown" | "html";
+  language: "markdown" | "html" | "text";
   wrap: boolean;
   fontSize: number;
   fontFamily: string;
@@ -59,7 +59,8 @@ const markdownBlockStyles = ViewPlugin.fromClass(class {
 }, { decorations: (plugin) => plugin.decorations });
 
 function languageExtension(language: Props["language"]) {
-  return language === "html" ? html({ autoCloseTags: false }) : [markdown(), markdownBlockStyles];
+  if (language === "html") return html({ autoCloseTags: false });
+  return language === "markdown" ? [markdown(), markdownBlockStyles] : [];
 }
 
 function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
@@ -67,24 +68,24 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
     ? {
         foreground: "oklch(0.87 0 0)",
         muted: "oklch(0.68 0 0)",
-        heading: "oklch(0.82 0 0)",
-        keyword: "oklch(0.78 0 0)",
-        attribute: "oklch(0.74 0 0)",
-        string: "oklch(0.71 0 0)",
-        link: "oklch(0.8 0 0)",
-        code: "oklch(0.76 0 0)",
+        heading: "#d3a36d",
+        keyword: "#dda097",
+        attribute: "#d0b272",
+        string: "#9bc39f",
+        link: "#82b4d0",
+        code: "#c1a4df",
         selection: "oklch(0.82 0 0 / .22)",
         active: "rgba(255, 255, 255, .025)",
       }
     : {
         foreground: "oklch(0.3 0 0)",
         muted: "oklch(0.52 0 0)",
-        heading: "oklch(0.36 0 0)",
-        keyword: "oklch(0.4 0 0)",
-        attribute: "oklch(0.44 0 0)",
-        string: "oklch(0.47 0 0)",
-        link: "oklch(0.38 0 0)",
-        code: "oklch(0.42 0 0)",
+        heading: "#9c6b38",
+        keyword: "#8b4f45",
+        attribute: "#8a6b32",
+        string: "#4f7556",
+        link: "#3d6f8f",
+        code: "#7b5f9e",
         selection: "oklch(0.3 0 0 / .18)",
         active: "oklch(0.3 0 0 / .025)",
       };
@@ -212,6 +213,7 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
         wrapConfig.of(initialConfig.wrap ? EditorView.lineWrapping : []),
         themeConfig.of(visualTheme(resolvedDarkTheme(), initialConfig.fontSize, initialConfig.fontFamily)),
         keymap.of([
+          { key: "Mod-h", run: openSearchPanel },
           ...closeBracketsKeymap,
           ...searchKeymap,
           ...historyKeymap,
@@ -267,7 +269,7 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
       ref={host}
       className="source-editor"
       style={{ "--editor-font-size": `${fontSize}px`, "--editor-font-family": fontFamily } as CSSProperties}
-      aria-label={`${language === "html" ? "HTML" : "Markdown"} source editor`}
+      aria-label={`${language === "html" ? "HTML" : language === "markdown" ? "Markdown" : "Plain text"} source editor`}
     />
   );
 }

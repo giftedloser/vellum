@@ -3676,9 +3676,10 @@ dependencies = [
 
 [[package]]
 name = "vellum"
-version = "0.2.3"
+version = "1.0.0"
 dependencies = [
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

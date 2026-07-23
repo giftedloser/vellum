@@ -2,6 +2,18 @@
 
 All notable changes to Vellum are documented in this file.
 
+## [1.0.0] - 2026-07-23
+
+### Added
+
+- Added HTML/Markdown and TXT workspaces with matching Pinned, In Progress, and Recent sidebar sections, durable scratch notes, and recovery snapshots.
+- Added plain-text creation, editing, counts, saving, startup handling, and Windows file association.
+- Restored distinct Markdown and HTML syntax colors in light and dark themes.
+
+### Changed
+
+- Closing a view or Vellum now preserves unsaved work for recovery instead of discarding it.
+
 ## [0.2.1] - 2026-07-16
 
 ### Fixed

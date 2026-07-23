@@ -94,15 +94,6 @@
 }
 
 .tree-row-wrap:hover .tree-row { transform: translateX(1px); }
-.tree-row-wrap.active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  width: 2px;
-  height: 14px;
-  border-radius: 999px;
-  background: var(--accent);
-}
 
 .tree-row-wrap.active .tree-label {
   font-weight: 610;
@@ -121,6 +112,71 @@
 .sidebar-command-bar button.active {
   color: var(--text);
   background: var(--active);
+}
+
+.workspace-switch {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 8px 5px 4px;
+}
+
+.workspace-switch button {
+  min-width: 0;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 620;
+  transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+
+.workspace-switch button[aria-pressed="true"],
+.workspace-switch button[aria-pressed="true"]:hover {
+  color: var(--text);
+  background: var(--active);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.section-toggle {
+  flex: 1;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.sidebar .section-toggle:hover:not(:disabled) {
+  background: transparent;
+}
+
+.note-row {
+  grid-template-columns: minmax(0, 1fr) 25px;
+}
+
+.tree-row-wrap:focus-within .tree-remove {
+  opacity: .72;
+}
+
+.sidebar-unsaved-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin: 0 6px 0 2px;
+  color: var(--muted);
+}
+
+.editor-counts {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  padding: 0 7px;
+  color: var(--editor-control-fg);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .sidebar-add-menu {

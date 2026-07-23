@@ -1,8 +1,8 @@
 {
   "name": "vellum",
   "private": true,
-  "version": "0.2.3",
-  "description": "A focused desktop viewer and lightweight source editor for Markdown and HTML files.",
+  "version": "1.0.0",
+  "description": "A focused desktop workspace for Markdown, HTML, text files, and persistent notes.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -20,6 +20,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test:recents": "node scripts/check-recents.mjs",
+    "test:session": "node scripts/check-session.mjs",
     "test:theme": "node scripts/check-neutral-theme.mjs",
     "preview": "vite preview",
     "icons": "node scripts/generate-icons.mjs",

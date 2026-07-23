@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     env, fs,
@@ -7,10 +7,11 @@ use std::{
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{http, Manager, State};
+use tauri::{http, AppHandle, Manager, State};
 
-const SUPPORTED_EXTENSIONS: &[&str] = &["md", "markdown", "html", "htm"];
+const SUPPORTED_EXTENSIONS: &[&str] = &["md", "markdown", "html", "htm", "txt"];
 const MAX_DOCUMENT_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_SESSION_BYTES: usize = 32 * 1024 * 1024;
 const MAX_SCAN_DEPTH: usize = 32;
 const MAX_SCAN_ENTRIES: usize = 20_000;
 
@@ -30,6 +31,59 @@ struct Entry {
     children: Option<Vec<Entry>>,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Session {
+    version: u8,
+    notes: Vec<SessionNote>,
+    documents: Vec<SessionDocument>,
+    active: Option<SessionActive>,
+    workspace: SessionWorkspace,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionNote {
+    id: String,
+    fallback_title: String,
+    content: String,
+    updated_at: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionDocument {
+    path: String,
+    content: String,
+    base_modified_ms: u64,
+    updated_at: u64,
+    kind: Option<SessionDocumentKind>,
+    name: Option<String>,
+    draft: Option<bool>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum SessionDocumentKind {
+    Markdown,
+    Html,
+    Text,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum SessionActive {
+    Note { id: String },
+    Document { path: String },
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum SessionWorkspace {
+    Documents,
+    Notes,
+}
+
 fn supported(path: &Path) -> bool {
     path.extension()
         .and_then(|value| value.to_str())
@@ -45,7 +99,7 @@ fn display_name(path: &Path) -> String {
 
 fn file_entry(canonical: &Path) -> Result<Entry, String> {
     if !canonical.is_file() || !supported(canonical) {
-        return Err("Vellum only opens Markdown and HTML files.".into());
+        return Err("Vellum only opens Markdown, HTML, and text files.".into());
     }
 
     Ok(Entry {
@@ -229,6 +283,63 @@ fn unique_sibling(parent: &Path, label: &str) -> PathBuf {
     parent.join(format!(".vellum-{label}-{stamp}.tmp"))
 }
 
+fn atomic_write(destination: &Path, content: &[u8]) -> Result<(), String> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| "The selected save location is invalid.".to_string())?;
+    let temporary = unique_sibling(parent, "write");
+    let backup = unique_sibling(parent, "backup");
+    {
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)
+            .map_err(|error| error.to_string())?;
+        file.write_all(content).map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+    }
+
+    let had_existing = destination.exists();
+    if had_existing {
+        fs::rename(destination, &backup).map_err(|error| {
+            let _ = fs::remove_file(&temporary);
+            error.to_string()
+        })?;
+    }
+
+    if let Err(error) = fs::rename(&temporary, destination) {
+        if had_existing {
+            let _ = fs::rename(&backup, destination);
+        }
+        let _ = fs::remove_file(&temporary);
+        return Err(error.to_string());
+    }
+
+    if had_existing {
+        let _ = fs::remove_file(&backup);
+    }
+    Ok(())
+}
+
+fn validated_session(session: &str) -> Result<Session, String> {
+    if session.len() > MAX_SESSION_BYTES {
+        return Err("The recovery session exceeds Vellum's 32 MB safety limit.".into());
+    }
+    let session: Session = serde_json::from_str(session)
+        .map_err(|_| "The recovery session is invalid.".to_string())?;
+    if session.version != 1 {
+        return Err("This recovery session version is not supported.".into());
+    }
+    Ok(session)
+}
+
+fn session_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|path| path.join("session-v1.json"))
+        .map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,8 +348,34 @@ mod tests {
     fn supports_only_document_extensions() {
         assert!(supported(Path::new("notes.MD")));
         assert!(supported(Path::new("page.html")));
+        assert!(supported(Path::new("scratch.TXT")));
         assert!(!supported(Path::new("script.js")));
         assert!(!supported(Path::new("README")));
+    }
+
+    #[test]
+    fn validates_the_session_contract() {
+        let session = r#"{"version":1,"notes":[{"id":"n1","fallbackTitle":"Untitled 1","content":"hello","updatedAt":1}],"documents":[{"path":"draft://Untitled.md","content":"draft","baseModifiedMs":0,"updatedAt":3,"kind":"markdown","name":"Untitled.md","draft":true}],"active":{"type":"document","path":"draft://Untitled.md"},"workspace":"documents"}"#;
+        let parsed = validated_session(session).unwrap();
+        assert_eq!(parsed.version, 1);
+        assert!(matches!(
+            parsed.documents[0].kind,
+            Some(SessionDocumentKind::Markdown)
+        ));
+        assert_eq!(parsed.documents[0].name.as_deref(), Some("Untitled.md"));
+        assert_eq!(parsed.documents[0].draft, Some(true));
+        assert!(validated_session(&session.replace("\"version\":1", "\"version\":2")).is_err());
+    }
+
+    #[test]
+    fn atomic_write_creates_and_replaces_content() {
+        let folder = unique_sibling(&env::temp_dir(), "atomic-test");
+        fs::create_dir(&folder).unwrap();
+        let path = folder.join("session.json");
+        atomic_write(&path, b"first").unwrap();
+        atomic_write(&path, b"second").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"second");
+        fs::remove_dir_all(folder).unwrap();
     }
 
     #[test]
@@ -282,6 +419,36 @@ mod tests {
         );
         fs::remove_dir_all(folder).unwrap();
     }
+}
+
+#[tauri::command]
+fn load_session(app: AppHandle) -> Result<Option<String>, String> {
+    let path = session_path(&app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    if fs::metadata(&path)
+        .map_err(|error| error.to_string())?
+        .len()
+        > MAX_SESSION_BYTES as u64
+    {
+        return Err("The recovery session exceeds Vellum's 32 MB safety limit.".into());
+    }
+    let session = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    validated_session(&session)?;
+    Ok(Some(session))
+}
+
+#[tauri::command]
+fn save_session(session: String, app: AppHandle) -> Result<(), String> {
+    validated_session(&session)?;
+    let path = session_path(&app)?;
+    fs::create_dir_all(
+        path.parent()
+            .ok_or_else(|| "The recovery session location is invalid.".to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    atomic_write(&path, session.as_bytes())
 }
 
 #[tauri::command]
@@ -386,7 +553,7 @@ fn write_document(
 
     let requested = PathBuf::from(path);
     if !supported(&requested) {
-        return Err("Vellum only saves Markdown and HTML files.".into());
+        return Err("Vellum only saves Markdown, HTML, and text files.".into());
     }
 
     let parent = requested
@@ -412,38 +579,7 @@ fn write_document(
         }
     }
 
-    let temporary = unique_sibling(&parent, "write");
-    let backup = unique_sibling(&parent, "backup");
-    {
-        let mut file = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&temporary)
-            .map_err(|error| error.to_string())?;
-        file.write_all(content.as_bytes())
-            .map_err(|error| error.to_string())?;
-        file.sync_all().map_err(|error| error.to_string())?;
-    }
-
-    let had_existing = destination.exists();
-    if had_existing {
-        fs::rename(&destination, &backup).map_err(|error| {
-            let _ = fs::remove_file(&temporary);
-            error.to_string()
-        })?;
-    }
-
-    if let Err(error) = fs::rename(&temporary, &destination) {
-        if had_existing {
-            let _ = fs::rename(&backup, &destination);
-        }
-        let _ = fs::remove_file(&temporary);
-        return Err(error.to_string());
-    }
-
-    if had_existing {
-        let _ = fs::remove_file(&backup);
-    }
+    atomic_write(&destination, content.as_bytes())?;
 
     let canonical = destination
         .canonicalize()
@@ -483,6 +619,8 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            load_session,
+            save_session,
             startup_document,
             scan_path,
             read_document,

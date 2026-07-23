@@ -6,13 +6,13 @@
   <img src="public/vellum-wordmark.png" width="320" alt="Vellum" />
 </p>
 
-<p align="center">A quiet desktop home for reading and lightly editing Markdown and HTML.</p>
+<p align="center">A quiet desktop home for documents and persistent scratch notes.</p>
 
 <p align="center">
   <a href="https://github.com/giftedloser/vellum/releases/latest"><strong>Download Vellum for Windows</strong></a>
 </p>
 
-Vellum opens local documents in a clean, distraction-free window. Markdown is carefully typeset, HTML gets the full viewing surface, and a lightweight editor is there when you need to make a quick correction.
+Vellum opens local Markdown, HTML, and text documents in a clean, distraction-free window. It also keeps independent scratch notes ready without requiring a filename or Save dialog.
 
 ## Why Vellum
 
@@ -28,17 +28,21 @@ Vellum opens local documents in a clean, distraction-free window. Markdown is ca
 2. Install and open Vellum. The current installer is unsigned, so Windows may show a SmartScreen warning.
 3. Choose **Open file** or **Open folder**, then pin anything you want to keep in the sidebar.
 
-Vellum supports `.md`, `.markdown`, `.html`, and `.htm` files. Installing it also makes Vellum available under **Open with** and in Windows **Default apps** for those file types.
+Vellum supports `.md`, `.markdown`, `.html`, `.htm`, and `.txt` files. Installing it also makes Vellum available under **Open with** and in Windows **Default apps** for those file types.
 
 ## Usage
 
 - Open one document or browse a complete folder.
 - Pin files and folders without moving or changing them on disk.
 - See recently used documents in activity order.
-- Create new Markdown or HTML files.
+- Switch between HTML/Markdown and TXT workspaces; each keeps the same Pinned, In Progress, and Recent sidebar structure.
+- Create new Markdown, HTML, or text files.
+- Keep multiple scratch notes, titled from their first non-empty line and ordered by recent edits.
 - Edit source with syntax highlighting, search, undo/redo, word wrap, and adjustable code fonts.
+- Edit plain text with wrapping plus word and character counts.
 - Save, Save As, Revert, reload externally changed files, and preview unsaved edits.
-- Restore your last document when Vellum starts.
+- Save an internal note as a `.txt` file without losing the original if Save As is cancelled or fails.
+- Restore the last active item and recover unsaved work without overwriting saved files.
 - Use system, light, or dark appearance.
 
 Removing an item from Vellum only removes it from the sidebar—it never deletes the file or folder.
@@ -47,6 +51,7 @@ Removing an item from Vellum only removes it from the sidebar—it never deletes
 
 | Action | Shortcut |
 | --- | --- |
+| New note | `Ctrl+N` |
 | Open file | `Ctrl+O` |
 | Open folder | `Ctrl+Shift+O` |
 | Show or hide sidebar | `Ctrl+B` |
@@ -54,15 +59,18 @@ Removing an item from Vellum only removes it from the sidebar—it never deletes
 | Save | `Ctrl+S` |
 | Save As | `Ctrl+Shift+S` |
 | Find while editing | `Ctrl+F` |
+| Replace while editing | `Ctrl+H` |
+| Undo | `Ctrl+Z` |
+| Redo | `Ctrl+Y` |
 | Reload document | `Ctrl+R` |
-| Close document | `Ctrl+W` |
+| Close current view | `Ctrl+W` |
 | Open settings | `Ctrl+,` |
 
 On macOS, use `Cmd` instead of `Ctrl` where applicable.
 
 ## Privacy and document safety
 
-Vellum works with local files and stores its sidebar and preferences on your device. It does not autosave or silently change documents. Before overwriting a file, it checks whether another application changed it, and unsaved work is protected when switching or closing.
+Vellum works with local files and stores its sidebar, notes, preferences, and recovery snapshots on your device. Recovery snapshots never write to saved files. Before intentionally overwriting a file, Vellum checks whether another application changed it.
 
 HTML documents may load their own remote images, scripts, or other resources. Vellum displays them in an isolated viewer without giving them access to the application itself.
 
@@ -80,17 +88,17 @@ HTML documents may load their own remote images, scripts, or other resources. Ve
 
 ### Scope
 
-Vellum is a focused viewer with lightweight source editing—not an IDE or visual site builder. It intentionally excludes language servers, terminals, extensions, project tooling, automatic formatting, autosave, linting pipelines, and split panes.
+Vellum is a focused document workspace with lightweight source editing—not an IDE or visual site builder. It intentionally excludes language servers, terminals, extensions, project tooling, automatic formatting, automatic source-file saving, linting pipelines, and split panes.
 
 ### Technology
 
 - Tauri 2 native desktop shell
 - React 19 with strict TypeScript
-- Lazy-loaded CodeMirror 6 Markdown and HTML editor
+- Lazy-loaded CodeMirror 6 Markdown, HTML, and plain-text editor
 - Sanitized Markdown rendering with DOMPurify
 - Sandboxed, opaque-origin HTML rendering
 - Least-privilege native file commands
-- Windows Markdown and HTML file associations
+- Windows Markdown, HTML, and text file associations
 
 ### Configuration
 
