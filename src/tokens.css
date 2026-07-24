@@ -14,9 +14,6 @@
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
-  --text-lg: 15px;
-  --text-xl: 20px;
-  --text-2xl: 24px;
 
   --weight-normal: 400;
   --weight-medium: 600;
@@ -36,12 +33,7 @@
   --accent: oklch(0.45 0 0);
   --accent-soft: oklch(0.67 0 0);
 
-  /* Back-compat aliases: the bulk of the stylesheet still reads these. */
-  --text: var(--text-body);
-  --muted: var(--text-secondary);
-
   /* Surfaces */
-  --app: oklch(0.955 0 0);
   --panel-rgb: 237, 237, 237;
   --surface: oklch(0.995 0 0);
   --surface-strong: oklch(1 0 0);
@@ -49,7 +41,6 @@
   --border-strong: oklch(0 0 0 / .24);
   --hover: oklch(0 0 0 / .075);
   --active: oklch(0 0 0 / .13);
-  --shadow: 0 24px 80px oklch(0 0 0 / .22), 0 2px 12px oklch(0 0 0 / .10);
   --scroll-thumb: oklch(0 0 0 / .28);
   --txt-icon: #7b5f9e;
 
@@ -57,10 +48,7 @@
      removed; the vignette read as a dark wash across panel edges. */
   --paper-blend: multiply;
 
-  /* Floating viewer + editor controls */
-  --floating-control: oklch(0.2 0 0 / .76);
-  --floating-control-strong: oklch(0.16 0 0 / .96);
-  --floating-control-hover: oklch(0 0 0 / .08);
+  /* Floating editor controls */
   --editor-control-bg: rgba(var(--panel-rgb), .82);
   --editor-control-bg-hover: rgba(var(--panel-rgb), .96);
   --editor-control-border: var(--border);
@@ -101,7 +89,6 @@
   --accent: oklch(0.78 0 0);
   --accent-soft: oklch(0.6 0 0);
 
-  --app: oklch(0.18 0 0);
   --panel-rgb: 29, 29, 29;
   --surface: oklch(0.22 0 0);
   --surface-strong: oklch(0.26 0 0);
@@ -109,15 +96,11 @@
   --border-strong: oklch(1 0 0 / .2);
   --hover: oklch(1 0 0 / .065);
   --active: oklch(1 0 0 / .13);
-  --shadow: 0 26px 90px rgba(0, 0, 0, .55), 0 2px 14px rgba(0, 0, 0, .35);
   --scroll-thumb: oklch(1 0 0 / .24);
   --txt-icon: #c1a4df;
 
   --paper-blend: soft-light;
 
-  --floating-control: oklch(0.94 0 0 / .78);
-  --floating-control-strong: oklch(1 0 0 / .96);
-  --floating-control-hover: oklch(1 0 0 / .09);
   --editor-control-shadow: 0 8px 28px rgba(0, 0, 0, .28), 0 1px 3px rgba(0, 0, 0, .22);
 
   color-scheme: dark;
