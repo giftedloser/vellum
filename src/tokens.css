@@ -26,8 +26,10 @@
      Every text colour resolves through one of these. --accent is reserved for
      interactive affordances (focus, links, selected state) and must not be
      borrowed for static labels. */
-  --text-title: oklch(0.18 0 0);
-  --text-body: oklch(0.22 0 0);
+  /* Soft black, not true black. oklch(0.22) rendered as #1b1b1b and read
+     harsh against the light panel. */
+  --text-title: oklch(0.28 0 0);
+  --text-body: oklch(0.34 0 0);
   --text-secondary: oklch(0.52 0 0);
   --label: oklch(0.48 0 0);
   --brand-color: oklch(0.25 0 0);

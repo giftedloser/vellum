@@ -329,7 +329,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   letter-spacing: -.006em;
 }
 
@@ -350,8 +350,11 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 
 .tree-remove svg { width: 11px; height: 11px; }
-.tree-row-wrap .tree-pin { grid-column: 2; }
-.tree-row-wrap .tree-remove:not(.tree-pin) { grid-column: 3; }
+/* Pin is always the rightmost cell so it sits flush against the row edge.
+   The unsaved dot and the root remove button share column 2: a row never
+   has both (notes and drafts carry a dot, roots carry a remove). */
+.tree-row-wrap .tree-pin { grid-column: 3; }
+.tree-row-wrap .tree-remove:not(.tree-pin) { grid-column: 2; }
 .tree-row-wrap:hover .tree-remove,
 .tree-row-wrap:focus-within .tree-remove { opacity: .72; }
 .sidebar .tree-remove:hover { opacity: 1; color: var(--accent); }
@@ -376,7 +379,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   font-size: var(--text-xs);
 }
 
-.sidebar-unsaved-dot { flex: none; width: 5px; height: 5px; margin: 0 6px 0 2px; color: var(--text-secondary); }
+.sidebar-unsaved-dot { grid-column: 2; justify-self: center; width: 5px; height: 5px; margin: 0; color: var(--text-secondary); }
 
 .unsaved-dot {
   display: inline-block;

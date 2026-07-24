@@ -882,8 +882,9 @@ function App() {
         <button type="button" className="tree-row" onClick={() => openNote(note.id)} title={noteTitle(note)}>
           <span className="tree-chevron" />
           <FileTypeIcon kind="text" size={13} />
-          <span className="tree-label">{noteTitle(note)}</span><span className="unsaved-dot sidebar-unsaved-dot" aria-label="Unsaved" />
+          <span className="tree-label">{noteTitle(note)}</span>
         </button>
+        <span className="unsaved-dot sidebar-unsaved-dot" role="img" aria-label="Unsaved" />
         <button type="button" className="tree-remove tree-pin" onClick={() => toggleNotePin(note.id)} title={notePinned ? "Unpin" : "Pin"} aria-label={`${notePinned ? "Unpin" : "Pin"} ${noteTitle(note)}`}>{notePinned ? <PinOff size={12} /> : <Pin size={12} />}</button>
       </div>
     );
@@ -896,8 +897,9 @@ function App() {
     return (
       <div key={item.path} className={`tree-row-wrap pinnable-row ${activeDocument?.path === item.path ? "active" : ""}`}>
         <button type="button" className="tree-row" onClick={() => item.draft ? openDraft(item.path) : void openDocument(item.path)} title={name}>
-          <span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} /><span className="tree-label">{sidebarLabel(name, true)}</span><span className="unsaved-dot sidebar-unsaved-dot" aria-label="Unsaved" />
+          <span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} /><span className="tree-label">{sidebarLabel(name, true)}</span>
         </button>
+        <span className="unsaved-dot sidebar-unsaved-dot" role="img" aria-label="Unsaved" />
         <button type="button" className="tree-remove tree-pin" onClick={() => togglePin(item.path)} title={itemPinned ? "Unpin" : "Pin"} aria-label={`${itemPinned ? "Unpin" : "Pin"} ${name}`}>{itemPinned ? <PinOff size={12} /> : <Pin size={12} />}</button>
       </div>
     );
