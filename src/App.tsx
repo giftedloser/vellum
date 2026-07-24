@@ -916,9 +916,8 @@ function App() {
           </header>
           <nav className="sidebar-section workspace-switch" aria-label="Workspace">
             {(["documents", "notes"] as Workspace[]).map((value) => (
-              <button key={value} type="button" title={value === "documents" ? "HTML and Markdown" : "TXT and notes"} aria-pressed={workspace === value} onClick={() => updateSession((current) => ({ ...current, workspace: value }))}>
+              <button key={value} type="button" aria-label={value === "documents" ? "HTML and Markdown" : "TXT and notes"} title={value === "documents" ? "HTML and Markdown" : "TXT and notes"} aria-pressed={workspace === value} onClick={() => updateSession((current) => ({ ...current, workspace: value }))}>
                 {value === "documents" ? <Code2 size={13} /> : <FileType2 size={13} />}
-                <span>{value === "documents" ? "Documents" : "Text"}</span>
               </button>
             ))}
           </nav>

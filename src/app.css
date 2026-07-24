@@ -102,7 +102,9 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: rgba(var(--panel-rgb), calc(var(--sidebar-opacity) * .94));
+  /* background-color, not the `background` shorthand: the shorthand resets
+     background-image and would strip the paper texture set above. */
+  background-color: rgba(var(--panel-rgb), calc(var(--sidebar-opacity) * .94));
   backdrop-filter: blur(22px) saturate(118%);
   border-right: 1px solid var(--border);
   transition: width var(--sidebar-motion) var(--sidebar-ease);
@@ -231,7 +233,6 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 
 .workspace-switch button svg { flex: none; }
-.workspace-switch button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 .sidebar .workspace-switch button[aria-pressed="true"],
 .sidebar .workspace-switch button[aria-pressed="true"]:hover {
@@ -779,7 +780,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   padding: 7px 23px 12px;
   border: 1px solid var(--border-strong);
   border-radius: 17px;
-  background: var(--surface-strong);
+  /* background-color so the paper texture set above survives. */
+  background-color: var(--surface-strong);
   box-shadow: 0 30px 90px oklch(0 0 0 / .32);
   /* Visible scrollbar: the panel is taller than the viewport at every
      realistic window size, and hiding it hid half the settings. */
