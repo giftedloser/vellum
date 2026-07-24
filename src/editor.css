@@ -1,24 +1,5 @@
-:root {
-  --editor-control-bg: rgba(var(--panel-rgb), .82);
-  --editor-control-bg-hover: rgba(var(--panel-rgb), .96);
-  --editor-control-border: var(--border);
-  --editor-control-divider: var(--border);
-  --editor-control-fg: var(--muted);
-  --editor-control-fg-strong: var(--text);
-  --editor-control-shadow: 0 8px 28px oklch(0 0 0 / .14), 0 1px 3px oklch(0 0 0 / .10);
-  --editor-select-scheme: light;
-}
-
-:root[data-theme="dark"] {
-  --editor-control-bg: rgba(var(--panel-rgb), .82);
-  --editor-control-bg-hover: rgba(var(--panel-rgb), .96);
-  --editor-control-border: var(--border);
-  --editor-control-divider: var(--border);
-  --editor-control-fg: var(--muted);
-  --editor-control-fg-strong: var(--text);
-  --editor-control-shadow: 0 8px 28px rgba(0, 0, 0, .28), 0 1px 3px rgba(0, 0, 0, .22);
-  --editor-select-scheme: dark;
-}
+/* Source editor (CodeMirror) and the floating document control bar.
+   Tokens come from tokens.css; app chrome lives in app.css. */
 
 .editor-shell,
 .source-editor {
@@ -56,7 +37,7 @@
 .source-editor .cm-md-h3 { font-size: 1.16em; }
 .source-editor .cm-md-quote { padding-block: .24em; padding-left: 10px; border-left: 2px solid var(--accent-soft); }
 .source-editor .cm-md-list { padding-block: .1em; }
-.source-editor .cm-md-fence { margin-top: .35em; color: var(--muted); }
+.source-editor .cm-md-fence { margin-top: .35em; color: var(--text-secondary); }
 .source-editor .cm-md-blank { min-height: .85em; }
 
 .source-editor .cm-panels {
@@ -71,7 +52,7 @@
 .source-editor .cm-search label::before {
   content: "Find";
   margin-right: 6px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   opacity: .62;
 }
 
@@ -160,7 +141,7 @@
 
 .document-controls button:focus-visible,
 .font-picker summary:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--editor-control-fg-strong) 64%, transparent);
+  outline: 2px solid var(--editor-control-fg-strong);
   outline-offset: -2px;
 }
 
@@ -171,9 +152,24 @@
 
 .document-controls .zoom-value {
   min-width: 48px;
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
   font-variant-numeric: tabular-nums;
+}
+
+.save-as-control {
+  font-size: var(--text-sm);
+}
+
+.editor-counts {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  padding: 0 7px;
+  color: var(--editor-control-fg);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .font-picker {
@@ -191,7 +187,7 @@
   justify-content: space-between;
   padding: 0 10px 0 12px;
   border-radius: 9px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--editor-control-fg-strong);
   background-color: color-mix(in srgb, var(--editor-control-fg) 7%, transparent);
   cursor: pointer;
@@ -225,7 +221,7 @@
   right: 0;
   width: max(100%, 160px);
   padding: 4px;
-  color: var(--text);
+  color: var(--text-body);
   background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
   border: 1px solid var(--border-strong);
   border-radius: 11px;
@@ -239,15 +235,15 @@
   height: 32px;
   justify-content: flex-start;
   padding: 0 10px;
-  color: var(--text);
+  color: var(--text-body);
   background: transparent;
-  font-size: 11px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
 .font-picker-menu button:hover:not(:disabled),
 .font-picker-menu button.active {
-  color: var(--text);
+  color: var(--text-body);
   background: var(--hover);
 }
 
@@ -263,8 +259,8 @@
   min-width: 50px;
   height: 36px;
   padding: 0 11px;
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
 }
 
 .document-mode-toggle button.active {
@@ -279,42 +275,6 @@
   height: 22px;
   margin: 0 4px;
   background: var(--editor-control-divider);
-}
-
-.unsaved-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-left: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.sidebar-section.recent-section {
-  min-height: 0;
-  flex: none;
-  max-height: 42%;
-}
-
-.pinned-section .tree,
-.open-section .tree,
-.recent-section .tree {
-  flex: none;
-}
-
-.tree-pin {
-  opacity: 0;
-}
-
-.tree-row-wrap:hover .tree-pin,
-.tree-row-wrap:focus-within .tree-pin {
-  opacity: .72;
-}
-
-@media (hover: none) {
-  .tree-pin {
-    opacity: .72;
-  }
 }
 
 @media (max-width: 900px) {
