@@ -53,9 +53,8 @@
   --scroll-thumb: oklch(0 0 0 / .28);
   --txt-icon: #7b5f9e;
 
-  /* Paper texture */
-  --paper-wash: oklch(0.45 0 0 / .022);
-  --paper-vignette: oklch(0 0 0 / .032);
+  /* Paper texture: grain only. The vignette and wash gradient layers were
+     removed; the vignette read as a dark wash across panel edges. */
   --paper-blend: multiply;
 
   /* Floating viewer + editor controls */
@@ -114,8 +113,6 @@
   --scroll-thumb: oklch(1 0 0 / .24);
   --txt-icon: #c1a4df;
 
-  --paper-wash: oklch(0.82 0 0 / .018);
-  --paper-vignette: oklch(0 0 0 / .12);
   --paper-blend: soft-light;
 
   --floating-control: oklch(0.94 0 0 / .78);

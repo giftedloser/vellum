@@ -53,18 +53,18 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   color: var(--text-body);
 }
 
+/* Grain only. `fixed` keeps one continuous grain field across every surface,
+   so the sticky settings header lines up with the panel behind it. */
 .app-shell,
 .sidebar,
 .settings-panel,
+.settings-panel header,
 .sidebar-add-menu {
-  background-image:
-    radial-gradient(ellipse at 50% 0%, transparent 35%, var(--paper-vignette) 100%),
-    linear-gradient(var(--paper-wash), var(--paper-wash)),
-    url("/textures/grain.png");
-  background-repeat: no-repeat, no-repeat, repeat;
-  background-size: 100% 100%, 100% 100%, 1024px 1024px;
-  background-attachment: fixed, fixed, fixed;
-  background-blend-mode: normal, normal, var(--paper-blend);
+  background-image: url("/textures/grain.png");
+  background-repeat: repeat;
+  background-size: 1024px 1024px;
+  background-attachment: fixed;
+  background-blend-mode: var(--paper-blend);
 }
 
 .global-drag-region {
@@ -803,7 +803,9 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--surface-strong);
+  /* background-color so the shared grain rule above survives; the plain
+     shorthand painted a flat white block over the textured panel. */
+  background-color: var(--surface-strong);
   border-bottom: 1px solid var(--border);
 }
 
