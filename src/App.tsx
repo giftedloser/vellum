@@ -75,7 +75,6 @@ type Preferences = {
   readingWidth: number;
   fontScale: number;
   lineHeight: number;
-  rememberDocument: boolean;
   editorWrap: boolean;
   editorFontSize: number;
   editorFont: EditorFont;
@@ -93,7 +92,6 @@ const defaultPreferences: Preferences = {
   readingWidth: 880,
   fontScale: 95,
   lineHeight: 170,
-  rememberDocument: true,
   editorWrap: true,
   editorFontSize: 14,
   editorFont: "Caskaydia Code NF",
@@ -918,11 +916,13 @@ function App() {
           </header>
           <nav className="sidebar-section workspace-switch" aria-label="Workspace">
             {(["documents", "notes"] as Workspace[]).map((value) => (
-              <button key={value} type="button" aria-label={value === "documents" ? "HTML and Markdown" : "TXT"} title={value === "documents" ? "HTML and Markdown" : "TXT"} aria-pressed={workspace === value} onClick={() => updateSession((current) => ({ ...current, workspace: value }))}>
+              <button key={value} type="button" title={value === "documents" ? "HTML and Markdown" : "TXT and notes"} aria-pressed={workspace === value} onClick={() => updateSession((current) => ({ ...current, workspace: value }))}>
                 {value === "documents" ? <Code2 size={13} /> : <FileType2 size={13} />}
+                <span>{value === "documents" ? "Documents" : "Text"}</span>
               </button>
             ))}
           </nav>
+          <div className="sidebar-scroll">
           <section className="sidebar-section pinned-section">
             <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.pinned} onClick={() => toggleSection("pinned")}>{collapsedSections.pinned ? <ChevronRight size={11} /> : <ChevronDown size={11} />}Pinned</button>
             {!collapsedSections.pinned ? <div className="tree">
@@ -949,6 +949,7 @@ function App() {
               {!recentEntries.length ? <div className="section-empty">No recent items</div> : null}
             </div> : null}
           </section>
+          </div>
           <footer className="sidebar-controls" aria-label="Viewer and application controls">
             <nav className="sidebar-command-bar" aria-label="Application controls">
               <button type="button" className={addMenuOpen ? "active" : ""} onClick={() => setAddMenuOpen((open) => !open)} title="Add or create" aria-label="Add file, folder, or document" aria-expanded={addMenuOpen}><Plus size={15} /></button>
@@ -1043,14 +1044,13 @@ function App() {
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSettingsOpen(true); }}><Settings size={14} />Settings<span>Ctrl ,</span></button>
       </div>{contextMenuScrollHint ? <div className="context-menu-more" aria-hidden="true">{contextMenuScrollHint === "up" ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</div> : null}</div> : null}
 
-      <dialog ref={settingsDialog} className="modal-backdrop" aria-labelledby="settings-title" onCancel={() => setSettingsOpen(false)} onClose={() => setSettingsOpen(false)}>
+      <dialog ref={settingsDialog} className="modal-backdrop" aria-labelledby="settings-title" onCancel={() => setSettingsOpen(false)} onClose={() => setSettingsOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
         <section className="settings-panel">
-          <header><div><span className="eyebrow">Vellum</span><h2 id="settings-title">Settings</h2></div><button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close settings" autoFocus><X size={17} /></button></header>
+          <header><h2 id="settings-title">Settings</h2><button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={17} /></button></header>
           <h3 className="settings-group-label">Interface</h3>
           <div className="setting-row"><div><strong>Appearance</strong><span>Choose how the application chrome is rendered.</span></div><select aria-label="Appearance" value={preferences.theme} onChange={(event) => setPreferences((current) => ({ ...current, theme: event.target.value as Theme }))}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
           <div className="setting-row range-row"><div><strong>Interface scale</strong><span>Zoom the entire application without changing the window.</span></div><label><input aria-label="Interface scale" type="range" min="80" max="110" step="5" value={preferences.interfaceScale} onChange={(event) => setPreferences((current) => ({ ...current, interfaceScale: Number(event.target.value) }))} /><span>{preferences.interfaceScale}%</span></label></div>
           <div className="setting-row range-row"><div><strong>Sidebar transparency</strong><span>Adjust the translucency of the saved workspace.</span></div><label><input aria-label="Sidebar transparency" type="range" min="65" max="100" value={preferences.sidebarOpacity} onChange={(event) => setPreferences((current) => ({ ...current, sidebarOpacity: Number(event.target.value) }))} /><span>{preferences.sidebarOpacity}%</span></label></div>
-          <div className="setting-row"><div><strong>Sidebar</strong><span>Change the current sidebar layout without leaving settings.</span></div><button type="button" className="reset-button" onClick={() => setSidebarOpen((value) => !value)}>{sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}{sidebarOpen ? "Collapse" : "Expand"}</button></div>
           <div className="setting-row"><div><strong>Sidebar motion</strong><span>Choose how quickly the sidebar collapses and expands.</span></div><select aria-label="Sidebar motion" value={preferences.sidebarMotion} onChange={(event) => setPreferences((current) => ({ ...current, sidebarMotion: event.target.value as SidebarMotion }))}><option value="quick">Quick</option><option value="balanced">Balanced</option><option value="relaxed">Relaxed</option></select></div>
           <div className="setting-row"><div><strong>Auto-hide controls</strong><span>Fade the document controls until the pointer approaches.</span></div><label className="switch"><input aria-label="Auto-hide document controls" type="checkbox" checked={preferences.autoHideControls} onChange={(event) => setPreferences((current) => ({ ...current, autoHideControls: event.target.checked }))} /><span aria-hidden="true" /></label></div>
           <h3 className="settings-group-label">Reading</h3>
