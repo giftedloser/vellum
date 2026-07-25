@@ -1,10 +1,10 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef } from "react";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { html } from "@codemirror/lang-html";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
-import { highlightSelectionMatches, openSearchPanel, searchKeymap } from "@codemirror/search";
+import { closeSearchPanel, highlightSelectionMatches, openSearchPanel, searchKeymap, searchPanelOpen } from "@codemirror/search";
 import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, drawSelection, dropCursor, EditorView, keymap, type DecorationSet, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
@@ -63,6 +63,28 @@ function languageExtension(language: Props["language"]) {
   return language === "markdown" ? [markdown(), markdownBlockStyles] : [];
 }
 
+/* Lucide-style glyphs masked into the search controls. mask-image is used
+   rather than background-image so each icon inherits currentColor and picks
+   up hover and checked states for free. */
+function toggleSearchPanel(view: EditorView) {
+  return searchPanelOpen(view.state) ? closeSearchPanel(view) : openSearchPanel(view);
+}
+
+function icon(body: string) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+const ICON_UP = '<path d="m18 15-6-6-6 6"/>';
+const ICON_DOWN = '<path d="m6 9 6 6 6-6"/>';
+const ICON_ALL = '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>';
+const ICON_REPLACE = '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>';
+const ICON_REPLACE_ALL = '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>';
+const ICON_CASE = '<path d="m3 15 4-8 4 8"/><path d="M4 13h6"/><circle cx="18" cy="12" r="3"/><path d="M21 9v6"/>';
+const ICON_REGEXP = '<path d="M17 3v10"/><path d="m12.67 5.5 8.66 5"/><path d="m12.67 10.5 8.66-5"/><path d="M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/>';
+const ICON_WORD = '<circle cx="7" cy="12" r="3"/><path d="M10 9v6"/><circle cx="17" cy="12" r="3"/><path d="M14 7v8"/><path d="M22 17v1c0 .5-.5 1-1 1H3c-.5 0-1-.5-1-1v-1"/>';
+const ICON_CLOSE = '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>';
+
 function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
   const palette = dark
     ? {
@@ -117,46 +139,195 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
       },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: palette.foreground },
       ".cm-activeLine": { backgroundColor: palette.active },
+      /* Docked to the bottom edge as one line, rounded on the top corners
+         only. absolute (not fixed) resolves against .cm-editor, so the bar
+         centres on the document pane and shifts with the sidebar on its own.
+         Surface is the sidebar's: same panel tint, same opacity token, same
+         grain, so it reads as part of the app shell rather than as a second
+         floating control bar. */
       ".cm-panels": {
-        color: "var(--vellum-control-fg)",
-        backgroundColor: "var(--vellum-control-bg-hover)",
-        border: "1px solid var(--vellum-control-border)",
-        boxShadow: "var(--vellum-control-shadow)",
-        backdropFilter: "blur(14px) saturate(120%)",
+        position: "absolute",
+        zIndex: "40",
+        top: "auto",
+        right: "auto",
+        bottom: "0",
+        left: "50%",
+        width: "max-content",
+        maxWidth: "calc(100% - 48px)",
+        padding: "5px",
+        color: "var(--text-body)",
+        backgroundColor: "rgba(var(--panel-rgb), calc(var(--sidebar-opacity) * .94))",
+        backgroundImage: "url('/textures/grain.png')",
+        backgroundRepeat: "repeat",
+        backgroundSize: "1024px 1024px",
+        backgroundAttachment: "fixed",
+        backgroundBlendMode: "var(--paper-blend)",
+        border: "1px solid var(--border)",
+        borderBottom: "0",
+        borderRadius: "12px 12px 0 0",
+        boxShadow: "var(--editor-control-shadow)",
+        backdropFilter: "blur(22px) saturate(118%)",
+        transform: "translateX(-50%)",
+        /* Without this the bar inherits the editor's monospace face. */
+        fontFamily: "var(--font-ui)",
       },
-      ".cm-panels.cm-panels-top": {
-        top: "58px",
-        right: "24px",
-        left: "auto",
-        width: "auto",
-        borderRadius: "10px",
+      ".cm-panels-top, .cm-panels-bottom": { borderTop: "0", borderBottom: "0" },
+      ".cm-search": {
+        display: "flex",
+        alignItems: "center",
+        gap: "2px",
+        padding: "0",
       },
-      ".cm-search": { padding: "5px" },
-      ".cm-search input": {
-        height: "28px",
+      /* CodeMirror separates find and replace with a <br>. */
+      ".cm-search br": { display: "none" },
+      /* Source order is find, buttons, toggles, replace. Reorder so the two
+         fields sit together on the left and the actions follow. */
+      ".cm-search input[name=search]": { order: "1" },
+      ".cm-search input[name=replace]": { order: "2", marginRight: "4px" },
+      ".cm-search button[name=prev]": { order: "3" },
+      ".cm-search button[name=next]": { order: "4" },
+      ".cm-search button[name=select]": { order: "5" },
+      ".cm-search button[name=replace]": { order: "6" },
+      ".cm-search button[name=replaceAll]": { order: "7" },
+      ".cm-search button[name=close]": { order: "9" },
+      ".cm-search .cm-textfield": {
+        height: "36px",
+        /* Shrinks rather than overflowing once the window is narrow. */
+        flex: "0 1 128px",
+        minWidth: "0",
+        margin: "0",
         border: "0",
-        borderRadius: "6px",
-        padding: "0 8px",
-        color: "inherit",
-        backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
+        borderRadius: "9px",
+        padding: "0 10px",
+        color: "var(--text-body)",
+        backgroundColor: "color-mix(in srgb, var(--text-secondary) 12%, transparent)",
+        fontFamily: "var(--font-ui)",
+        fontSize: "12px",
         outline: "none",
       },
-      ".cm-search button": {
-        height: "28px",
+      /* Text buttons become icon buttons: the label is hidden and a lucide
+         glyph is masked in so it inherits currentColor on hover. */
+      ".cm-search .cm-button": {
+        position: "relative",
+        flex: "none",
+        width: "34px",
+        height: "36px",
+        margin: "0",
+        padding: "0",
         border: "0",
-        borderRadius: "6px",
-        color: "inherit",
+        borderRadius: "9px",
+        color: "var(--text-secondary)",
         backgroundColor: "transparent",
+        backgroundImage: "none",
+        fontSize: "0",
       },
-      ".cm-search button:hover": {
-        backgroundColor: "color-mix(in srgb, currentColor 10%, transparent)",
+      ".cm-search .cm-button::after": {
+        content: "''",
+        position: "absolute",
+        inset: "0",
+        backgroundColor: "currentColor",
+        maskRepeat: "no-repeat",
+        maskPosition: "center",
+        maskSize: "15px 15px",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        WebkitMaskSize: "15px 15px",
+      },
+      ".cm-search .cm-button:hover": {
+        color: "var(--text-body)",
+        backgroundColor: "var(--hover)",
+      },
+      ".cm-search button[name=prev]::after": { maskImage: icon(ICON_UP), WebkitMaskImage: icon(ICON_UP) },
+      ".cm-search button[name=next]::after": { maskImage: icon(ICON_DOWN), WebkitMaskImage: icon(ICON_DOWN) },
+      ".cm-search button[name=select]::after": { maskImage: icon(ICON_ALL), WebkitMaskImage: icon(ICON_ALL) },
+      ".cm-search button[name=replace]::after": { maskImage: icon(ICON_REPLACE), WebkitMaskImage: icon(ICON_REPLACE) },
+      ".cm-search button[name=replaceAll]::after": { maskImage: icon(ICON_REPLACE_ALL), WebkitMaskImage: icon(ICON_REPLACE_ALL) },
+      /* Checkboxes become toggle buttons matching the word-wrap control:
+         the native box is hidden and the label carries the pressed state. */
+      ".cm-panel.cm-search label": {
+        order: "8",
+        position: "relative",
+        flex: "none",
+        width: "34px",
+        height: "36px",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        margin: "0",
+        padding: "0",
+        borderRadius: "9px",
+        color: "var(--text-secondary)",
+        /* CodeMirror's own base theme sets font-size: 80% on this selector and
+           wins on injection order even at equal specificity, so the label text
+           has to be forced off to leave just the masked icon. */
+        fontSize: "0 !important",
+        cursor: "pointer",
+      },
+      ".cm-panel.cm-search label:hover": { color: "var(--text-body)", backgroundColor: "var(--hover)" },
+      ".cm-panel.cm-search label:has(input:checked)": { color: "var(--accent)", backgroundColor: "var(--active)" },
+      ".cm-panel.cm-search label input": {
+        position: "absolute",
+        width: "1px",
+        height: "1px",
+        margin: "0",
+        opacity: "0",
+      },
+      ".cm-panel.cm-search label::after": {
+        content: "''",
+        position: "absolute",
+        inset: "0",
+        backgroundColor: "currentColor",
+        maskRepeat: "no-repeat",
+        maskPosition: "center",
+        maskSize: "15px 15px",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        WebkitMaskSize: "15px 15px",
+      },
+      ".cm-panel.cm-search label:nth-of-type(1)::after": { maskImage: icon(ICON_CASE), WebkitMaskImage: icon(ICON_CASE) },
+      ".cm-panel.cm-search label:nth-of-type(2)::after": { maskImage: icon(ICON_REGEXP), WebkitMaskImage: icon(ICON_REGEXP) },
+      ".cm-panel.cm-search label:nth-of-type(3)::after": { maskImage: icon(ICON_WORD), WebkitMaskImage: icon(ICON_WORD) },
+      /* Must match CodeMirror's own selector shape, which absolutely positions
+         this at right: 4px, where it sat on top of "replace all". */
+      ".cm-panel.cm-search button[name=close]": {
+        /* relative, not static: the ::after icon must anchor to the button
+           rather than escaping to the panel. */
+        position: "relative",
+        flex: "none",
+        width: "34px",
+        height: "36px",
+        margin: "0 0 0 2px",
+        padding: "0",
+        border: "0",
+        borderRadius: "9px",
+        color: "var(--text-secondary)",
+        backgroundColor: "transparent",
+        fontSize: "0",
+      },
+      ".cm-panel.cm-search button[name=close]::after": {
+        content: "''",
+        position: "absolute",
+        inset: "0",
+        backgroundColor: "currentColor",
+        maskImage: icon(ICON_CLOSE),
+        maskRepeat: "no-repeat",
+        maskPosition: "center",
+        maskSize: "15px 15px",
+        WebkitMaskImage: icon(ICON_CLOSE),
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        WebkitMaskSize: "15px 15px",
+      },
+      ".cm-panel.cm-search button[name=close]:hover": {
+        color: "var(--text-body)",
+        backgroundColor: "var(--hover)",
       },
       ".cm-tooltip": {
-        color: "var(--vellum-control-fg)",
-        backgroundColor: "var(--vellum-control-bg-hover)",
-        border: "1px solid var(--vellum-control-border)",
+        color: "var(--editor-control-fg)",
+        backgroundColor: "var(--editor-control-bg-hover)",
+        border: "1px solid var(--editor-control-border)",
         borderRadius: "8px",
-        boxShadow: "var(--vellum-control-shadow)",
+        boxShadow: "var(--editor-control-shadow)",
       },
       "&.cm-focused": { outline: "none" },
     }, { dark }),
@@ -213,7 +384,10 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
         wrapConfig.of(initialConfig.wrap ? EditorView.lineWrapping : []),
         themeConfig.of(visualTheme(resolvedDarkTheme(), initialConfig.fontSize, initialConfig.fontFamily)),
         keymap.of([
-          { key: "Mod-h", run: openSearchPanel },
+          // Listed before searchKeymap so these win: the stock bindings only
+          // open the panel, so the shortcut could never close it again.
+          { key: "Mod-f", run: toggleSearchPanel },
+          { key: "Mod-h", run: toggleSearchPanel },
           ...closeBracketsKeymap,
           ...searchKeymap,
           ...historyKeymap,
@@ -268,7 +442,6 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
     <div
       ref={host}
       className="source-editor"
-      style={{ "--editor-font-size": `${fontSize}px`, "--editor-font-family": fontFamily } as CSSProperties}
       aria-label={`${language === "html" ? "HTML" : language === "markdown" ? "Markdown" : "Plain text"} source editor`}
     />
   );

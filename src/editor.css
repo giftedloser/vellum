@@ -40,24 +40,16 @@
 .source-editor .cm-md-fence { margin-top: .35em; color: var(--text-secondary); }
 .source-editor .cm-md-blank { min-height: .85em; }
 
-.source-editor .cm-panels {
-  position: fixed;
-  z-index: 40;
-}
+/* The search panel is styled entirely in SourceEditor's EditorView.theme, so
+   it overrides CodeMirror's base theme instead of racing it on source order.
+   The rules that lived here set every label to font-size 0 and injected
+   "Find" before each one, which is why the checkboxes read "match case Find"
+   and "regexp Find". */
 
-.source-editor .cm-search label {
-  font-size: 0;
-}
-
-.source-editor .cm-search label::before {
-  content: "Find";
-  margin-right: 6px;
-  font-size: var(--text-xs);
-  opacity: .62;
-}
-
-.source-editor .cm-search .name {
-  display: none;
+/* The search bar docks bottom-centre, where the document bar already lives.
+   Lift the document bar clear of it while a panel is open. */
+.main-pane:has(.cm-panels) .document-controls-wrap {
+  bottom: 46px;
 }
 
 /* One stable document bar; only its mode-specific tools change. */

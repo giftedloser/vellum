@@ -1,6 +1,6 @@
 [package]
 name = "vellum"
-version = "1.0.1"
+version = "1.0.2"
 description = "A focused Markdown, HTML, and text document viewer"
 authors = ["Marshall Jarvis"]
 edition = "2021"

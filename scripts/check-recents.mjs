@@ -20,4 +20,11 @@ assert.equal(recent.documentKind(String.raw`\\?\C:\Users\Marshall\mixed\README.m
 assert.equal(recent.documentKind(String.raw`\\?\C:\Users\Marshall\mixed\page.html`), "html");
 assert.equal(recent.documentKind(String.raw`\\?\C:\Users\Marshall\mixed\notes.TXT`), "text");
 
+// The stored list is capped so it cannot grow without bound.
+const overflowing = Array.from({ length: recent.maxRecentCount + 40 }, (_, index) => ({ path: `old-${index}.md`, lastOpened: index }));
+const capped = recent.touchRecent(overflowing, "fresh.md", 999);
+assert.equal(capped.length, recent.maxRecentCount);
+assert.deepEqual(capped[0], { path: "fresh.md", lastOpened: 999 });
+assert.equal(capped.at(-1).path, `old-${recent.maxRecentCount - 2}.md`);
+
 console.log("Recent history behavior passed.");
