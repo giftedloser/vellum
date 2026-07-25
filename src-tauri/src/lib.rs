@@ -7,7 +7,7 @@ use std::{
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{http, AppHandle, Manager, State};
+use tauri::{http, AppHandle, Emitter, Manager, State};
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["md", "markdown", "html", "htm", "txt"];
 const MAX_DOCUMENT_BYTES: u64 = 32 * 1024 * 1024;
@@ -21,7 +21,7 @@ struct AppState {
     asset_roots: Mutex<Vec<PathBuf>>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Entry {
     name: String,
@@ -591,6 +591,31 @@ fn write_document(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Registered first, as the plugin requires. Without it a second launch
+        // (double-clicking a file while Vellum is open) started a whole second
+        // process, and both wrote the same recovery session file on a debounce,
+        // so one window could clobber the other's unsaved drafts. Now the
+        // second launch hands its arguments to the running window and exits.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            let state = app.state::<AppState>();
+            let opened = argv.iter().skip(1).find_map(|argument| {
+                let path = PathBuf::from(argument);
+                if !supported(&path) {
+                    return None;
+                }
+                let canonical = path.canonicalize().ok()?;
+                let entry = file_entry(&canonical).ok()?;
+                authorize_root(&canonical, &state).ok()?;
+                Some(entry)
+            });
+            if let Some(entry) = opened {
+                let _ = app.emit("vellum://open-document", entry);
+            }
+        }))
         .manage(AppState::default())
         .register_uri_scheme_protocol("vellum-asset", |context, request| {
             let state = context.app_handle().state::<AppState>();

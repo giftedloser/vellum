@@ -1,5 +1,12 @@
 # Third-party notices
 
+## Inter
+
+Inter was created by Rasmus Andersson and is used under the SIL Open Font License 1.1. Vellum bundles the Latin, upright, weight-variable subset only.
+
+- Source: https://github.com/rsms/inter
+- License: SIL OFL 1.1, see `public/fonts/Inter-OFL.txt`
+
 ## Markdown Mark
 
 The Markdown Mark was created by Dustin Curtis and is dedicated to the public domain under CC0 1.0.

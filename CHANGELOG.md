@@ -2,6 +2,18 @@
 
 All notable changes to Vellum are documented in this file.
 
+## [1.0.3] - 2026-07-25
+
+### Fixed
+
+- Opening a file from Explorer while Vellum was already running started a second copy of the application. Both wrote the same recovery file, so one window could overwrite the other's unsaved work. A second launch now hands the file to the window you already have open.
+- `Ctrl+F` did not close the find bar while the cursor was still in the Find field, and the unhandled key opened the browser engine's own find bar over the application. It now toggles from anywhere in the editor or the panel, and the native bar no longer appears.
+
+### Changed
+
+- The interface font is now bundled rather than relied upon from the system, so text renders identically on every machine and font weights render as intended.
+- The installer is roughly 44 percent smaller. Two large images were being copied into the application without ever being used, and a third was a build-time source that never needed to ship.
+
 ## [1.0.2] - 2026-07-24
 
 ### Fixed
@@ -82,6 +94,7 @@ All notable changes to Vellum are documented in this file.
 - Kept HTML rendering inside a sandboxed opaque-origin frame.
 - Added JavaScript and Rust dependency audits to continuous integration.
 
+[1.0.3]: https://github.com/giftedloser/vellum/releases/tag/v1.0.3
 [1.0.2]: https://github.com/giftedloser/vellum/releases/tag/v1.0.2
 [1.0.1]: https://github.com/giftedloser/vellum/releases/tag/v1.0.1
 [1.0.0]: https://github.com/giftedloser/vellum/releases/tag/v1.0.0
