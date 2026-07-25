@@ -8,7 +8,7 @@ import { marked } from "marked";
 import FileTypeIcon from "./FileTypeIcon";
 import WindowControls from "./WindowControls";
 import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type DocumentKind, type RecentItem } from "./recent";
-import { createNote, emptySession, noteTitle, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
+import { createNote, emptySession, noteTitle, sortNotes, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
 import {
   ChevronDown,
   ChevronRight,
@@ -246,7 +246,10 @@ function App() {
   const [activeNoteId, setActiveNoteId] = useState<string>();
   const [draftContent, setDraftContent] = useState("");
   const [editMode, setEditMode] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(() => readStored("vellum.sidebarOpen:v1", true));
+  // Opening a file from Explorer is a read-first launch, so it starts with the
+  // sidebar collapsed and never writes that back over the saved preference.
+  const startupLaunch = useRef(Boolean(localStorage.getItem("vellum.startup-document:v1")));
+  const [sidebarOpen, setSidebarOpen] = useState(() => startupLaunch.current ? false : readStored("vellum.sidebarOpen:v1", true));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
@@ -677,7 +680,10 @@ function App() {
   useEffect(() => localStorage.setItem("vellum.pinned:v2", JSON.stringify(pinned)), [pinned]);
   useEffect(() => localStorage.setItem("vellum.pinnedNotes:v1", JSON.stringify(pinnedNotes)), [pinnedNotes]);
   useEffect(() => localStorage.setItem("vellum.folderWorkspaces:v1", JSON.stringify(folderWorkspaces)), [folderWorkspaces]);
-  useEffect(() => localStorage.setItem("vellum.sidebarOpen:v1", JSON.stringify(sidebarOpen)), [sidebarOpen]);
+  useEffect(() => {
+    if (startupLaunch.current) return;
+    localStorage.setItem("vellum.sidebarOpen:v1", JSON.stringify(sidebarOpen));
+  }, [sidebarOpen]);
   useEffect(() => localStorage.setItem("vellum.collapsedSections:v1", JSON.stringify(collapsedSections)), [collapsedSections]);
 
   const persistSession = useCallback(async (value: SessionState) => {
@@ -786,15 +792,18 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Both outputs are only mounted when the editor is closed. Without the
+  // editMode guard every keystroke paid for a full parse and sanitize whose
+  // result was discarded (measured 5.1ms per keystroke on a 53KB document).
   const renderedMarkdown = useMemo(() => {
-    if (!activeDocument || activeDocument.kind !== "markdown") return "";
+    if (editMode || !activeDocument || activeDocument.kind !== "markdown") return "";
     return DOMPurify.sanitize(marked.parse(draftContent, { async: false }) as string);
-  }, [activeDocument, draftContent]);
+  }, [activeDocument, draftContent, editMode]);
 
   const renderedHtml = useMemo(() => {
-    if (!activeDocument || activeDocument.kind !== "html") return "";
+    if (editMode || !activeDocument || activeDocument.kind !== "html") return "";
     return prepareHtml(draftContent, resolvedTheme, activeDocument.assetBaseUrl);
-  }, [activeDocument, draftContent, resolvedTheme]);
+  }, [activeDocument, draftContent, editMode, resolvedTheme]);
 
   useEffect(() => {
     if (!htmlMode || editMode) return;
@@ -827,7 +836,7 @@ function App() {
     });
   const displayedRecentEntries = visibleRecents(recentEntries, recentExpanded);
   const hiddenRecentCount = recentEntries.length - displayedRecentEntries.length;
-  const displayedNotes = session.notes;
+  const displayedNotes = sortNotes(session.notes);
   const pinnedInternalNotes = displayedNotes.filter((note) => pinnedNotes.includes(note.id));
   const inProgressInternalNotes = displayedNotes.filter((note) => !pinnedNotes.includes(note.id));
 

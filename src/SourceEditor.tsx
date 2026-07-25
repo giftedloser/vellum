@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef } from "react";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { html } from "@codemirror/lang-html";
@@ -118,10 +118,10 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: palette.foreground },
       ".cm-activeLine": { backgroundColor: palette.active },
       ".cm-panels": {
-        color: "var(--vellum-control-fg)",
-        backgroundColor: "var(--vellum-control-bg-hover)",
-        border: "1px solid var(--vellum-control-border)",
-        boxShadow: "var(--vellum-control-shadow)",
+        color: "var(--editor-control-fg)",
+        backgroundColor: "var(--editor-control-bg-hover)",
+        border: "1px solid var(--editor-control-border)",
+        boxShadow: "var(--editor-control-shadow)",
         backdropFilter: "blur(14px) saturate(120%)",
       },
       ".cm-panels.cm-panels-top": {
@@ -152,11 +152,11 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
         backgroundColor: "color-mix(in srgb, currentColor 10%, transparent)",
       },
       ".cm-tooltip": {
-        color: "var(--vellum-control-fg)",
-        backgroundColor: "var(--vellum-control-bg-hover)",
-        border: "1px solid var(--vellum-control-border)",
+        color: "var(--editor-control-fg)",
+        backgroundColor: "var(--editor-control-bg-hover)",
+        border: "1px solid var(--editor-control-border)",
         borderRadius: "8px",
-        boxShadow: "var(--vellum-control-shadow)",
+        boxShadow: "var(--editor-control-shadow)",
       },
       "&.cm-focused": { outline: "none" },
     }, { dark }),
@@ -268,7 +268,6 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
     <div
       ref={host}
       className="source-editor"
-      style={{ "--editor-font-size": `${fontSize}px`, "--editor-font-family": fontFamily } as CSSProperties}
       aria-label={`${language === "html" ? "HTML" : language === "markdown" ? "Markdown" : "Plain text"} source editor`}
     />
   );
