@@ -100,7 +100,8 @@ Vellum is a focused document workspace with lightweight source editing—not an 
 - Sanitized Markdown rendering with DOMPurify
 - Sandboxed, opaque-origin HTML rendering
 - Least-privilege native file commands
-- Windows Markdown, HTML, and text file associations
+- Windows Markdown, HTML, and text file associations, opening into a single running instance
+- Bundled Inter and Style Script, so typography does not depend on system fonts
 
 ### Configuration
 
@@ -129,20 +130,28 @@ npm run tauri -- build
 
 ```bash
 npm run build
+npm run test:recents
+npm run test:session
+npm run test:theme
 npm audit --omit=dev --audit-level=high
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo test --manifest-path src-tauri/Cargo.toml
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-GitHub Actions independently validates the frontend, Rust/Tauri core, dependency advisories, formatting, tests, and a Windows release executable.
+`test:recents` and `test:session` cover the sidebar history and recovery-session contracts. `test:theme` asserts that no chromatic colour has crept into the neutral theme and that the paper texture is byte-identical to the original.
+
+GitHub Actions independently validates the frontend, Rust/Tauri core, dependency advisories, formatting, tests, and a Windows release executable. Clippy is not part of that pipeline; run it locally if you want it:
+
+```bash
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+```
 
 ### Project structure
 
 ```text
 assets/                 Brand and build-time sources, never shipped
 public/                 Fonts, texture, and favicons copied into the bundle
-scripts/                Reproducible icon and wordmark generation
+scripts/                Icon and texture generation, plus the behaviour checks
 src/                    React application, editor, and interface styles
 src-tauri/              Native commands, permissions, and bundle configuration
 .github/workflows/      Continuous integration
