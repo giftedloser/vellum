@@ -930,7 +930,7 @@ function App() {
               {workspace === "notes" ? pinnedInternalNotes.map(renderNoteRow) : null}
               {pinnedProgressItems.map(renderProgressRow)}
               {pinnedEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
-              {!pinnedEntries.length && !pinnedProgressItems.length && (workspace !== "notes" || !pinnedInternalNotes.length) ? <div className="section-empty">Nothing pinned</div> : null}
+              {!pinnedEntries.length && !pinnedProgressItems.length && (workspace !== "notes" || !pinnedInternalNotes.length) ? <div className="section-empty">Empty</div> : null}
             </div> : null}
           </section>
           <section className="sidebar-section open-section">
@@ -938,7 +938,7 @@ function App() {
             {!collapsedSections.open ? <div className="tree">
               {workspace === "notes" ? inProgressInternalNotes.map(renderNoteRow) : null}
               {openItems.map(renderProgressRow)}
-              {!openItems.length && (workspace !== "notes" || !inProgressInternalNotes.length) ? <div className="section-empty">Nothing in progress</div> : null}
+              {!openItems.length && (workspace !== "notes" || !inProgressInternalNotes.length) ? <div className="section-empty">Empty</div> : null}
             </div> : null}
           </section>
           <section className={`sidebar-section recent-section ${collapsedSections.recent ? "collapsed" : ""}`}>
@@ -947,7 +947,7 @@ function App() {
               {displayedRecentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
               {hiddenRecentCount > 0 ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(true)} aria-expanded="false">More ({hiddenRecentCount})</button> : null}
               {recentExpanded && recentEntries.length > collapsedRecentCount ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(false)} aria-expanded="true">Show less</button> : null}
-              {!recentEntries.length ? <div className="section-empty">No recent items</div> : null}
+              {!recentEntries.length ? <div className="section-empty">Empty</div> : null}
             </div> : null}
           </section>
           </div>

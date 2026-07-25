@@ -10,6 +10,10 @@
   --font-mono: "SFMono-Regular", Consolas, monospace;
   --font-display: "Style Script", cursive;
 
+  /* Uppercase only. Caps set every glyph at full cap-height, so they read
+     larger and heavier than lowercase at the same size; a step down plus a
+     lighter weight brings the optical mass back in line. */
+  --text-caps: 9px;
   --text-2xs: 10px;
   --text-xs: 11px;
   --text-sm: 12px;
@@ -28,7 +32,7 @@
   --text-title: oklch(0.28 0 0);
   --text-body: oklch(0.34 0 0);
   --text-secondary: oklch(0.52 0 0);
-  --label: oklch(0.48 0 0);
+  --label: oklch(0.40 0 0);
   --brand-color: oklch(0.25 0 0);
   --accent: oklch(0.45 0 0);
   --accent-soft: oklch(0.67 0 0);
@@ -84,7 +88,7 @@
   --text-title: oklch(0.96 0 0);
   --text-body: oklch(0.92 0 0);
   --text-secondary: oklch(0.72 0 0);
-  --label: oklch(0.68 0 0);
+  --label: oklch(0.80 0 0);
   --brand-color: oklch(0.94 0 0);
   --accent: oklch(0.78 0 0);
   --accent-soft: oklch(0.6 0 0);
