@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
@@ -269,6 +270,7 @@ function App() {
   const documentRestored = useRef(false);
   const sessionReady = useRef(false);
   const sessionWritable = useRef(true);
+  const lastPersisted = useRef<string>(undefined);
   const sessionRef = useRef(session);
   const openRequest = useRef(0);
   const rootsRef = useRef<Entry[]>([]);
@@ -608,6 +610,19 @@ function App() {
     return () => { cancelled = true; };
   }, [openDocument, openDraft, openNote]);
 
+  // A second launch no longer starts its own process; the single-instance
+  // plugin hands its arguments to this window instead. The sidebar is left
+  // alone here on purpose: collapsing it is right for a cold launch, but
+  // would be jarring in a window you are already working in.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    void listen<{ path: string }>("vellum://open-document", (event) => {
+      if (event.payload?.path) void openDocument(event.payload.path);
+    }).then((dispose) => { unlisten = dispose; });
+    return () => unlisten?.();
+  }, [openDocument]);
+
   useEffect(() => {
     const dialog = settingsDialog.current;
     if (settingsOpen && !dialog?.open) dialog?.showModal();
@@ -686,11 +701,18 @@ function App() {
   }, [sidebarOpen]);
   useEffect(() => localStorage.setItem("vellum.collapsedSections:v1", JSON.stringify(collapsedSections)), [collapsedSections]);
 
+  // The effect below is a trailing debounce, so typing produces one write per
+  // pause rather than a stream. This guard covers the other case: the effect
+  // re-running when something unrelated changed the session object without
+  // changing its contents. Marked persisted only after the write succeeds, so
+  // a failed write is retried rather than silently swallowed.
   const persistSession = useCallback(async (value: SessionState) => {
     if (!sessionWritable.current) return;
     const serialized = JSON.stringify(value);
+    if (serialized === lastPersisted.current) return;
     if (isTauri()) await invoke("save_session", { session: serialized });
     else localStorage.setItem("vellum.session:v1", serialized);
+    lastPersisted.current = serialized;
   }, []);
 
   useEffect(() => {
