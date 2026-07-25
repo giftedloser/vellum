@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="public/vellum-icon-dark.png" width="112" height="112" alt="Vellum icon" />
+  <img src="assets/vellum-icon-dark.png" width="112" height="112" alt="Vellum icon" />
 </p>
 
 <p align="center">
-  <img src="public/vellum-wordmark.png" width="320" alt="Vellum" />
+  <img src="assets/vellum-wordmark.png" width="320" alt="Vellum" />
 </p>
 
 <p align="center">A quiet desktop home for documents and persistent scratch notes.</p>
@@ -30,6 +30,8 @@ Vellum opens local Markdown, HTML, and text documents in a clean, distraction-fr
 
 Vellum supports `.md`, `.markdown`, `.html`, `.htm`, and `.txt` files. Installing it also makes Vellum available under **Open with** and in Windows **Default apps** for those file types.
 
+Windows protects whichever application you have already chosen for a file type, so an installer cannot take that choice over. If a type still opens elsewhere, set it once from **Open with → Choose another app**, or in **Settings → Apps → Default apps**.
+
 ## Usage
 
 - Open one document or browse a complete folder.
@@ -43,6 +45,7 @@ Vellum supports `.md`, `.markdown`, `.html`, `.htm`, and `.txt` files. Installin
 - Save, Save As, Revert, reload externally changed files, and preview unsaved edits.
 - Save an internal note as a `.txt` file without losing the original if Save As is cancelled or fails.
 - Restore the last active item and recover unsaved work without overwriting saved files.
+- Open a file from Explorer into the window you already have open, rather than a second copy of the application.
 - Use system, light, or dark appearance.
 
 Removing an item from Vellum only removes it from the sidebar—it never deletes the file or folder.
@@ -58,8 +61,7 @@ Removing an item from Vellum only removes it from the sidebar—it never deletes
 | Switch View/Edit | `Ctrl+E` |
 | Save | `Ctrl+S` |
 | Save As | `Ctrl+Shift+S` |
-| Find while editing | `Ctrl+F` |
-| Replace while editing | `Ctrl+H` |
+| Find and replace while editing | `Ctrl+F` or `Ctrl+H` |
 | Undo | `Ctrl+Z` |
 | Redo | `Ctrl+Y` |
 | Reload document | `Ctrl+R` |
@@ -138,7 +140,8 @@ GitHub Actions independently validates the frontend, Rust/Tauri core, dependency
 ### Project structure
 
 ```text
-public/                 Brand, font, texture, and favicon assets
+assets/                 Brand and build-time sources, never shipped
+public/                 Fonts, texture, and favicons copied into the bundle
 scripts/                Reproducible icon and wordmark generation
 src/                    React application, editor, and interface styles
 src-tauri/              Native commands, permissions, and bundle configuration
@@ -162,8 +165,8 @@ The full reviews are available in [AUDIT.md](AUDIT.md), [RENDERER_AUDIT.md](REND
 
 ### Branding and licenses
 
-The canonical application icons are `public/vellum-icon-dark.png` and `public/vellum-icon-light.png`. Native assets are regenerated with `npm run icons`, and the README wordmark is rendered from the bundled Style Script font.
+The canonical application icons are `assets/vellum-icon-dark.png` and `assets/vellum-icon-light.png`. These live in `assets/` rather than `public/` on purpose: `public/` is copied verbatim into the application bundle, so brand and build-time sources kept there ship to every user. Native assets are regenerated from the dark icon with `npm run icons`.
 
-Vellum is available under the [MIT License](LICENSE). Style Script is licensed separately under the [SIL Open Font License 1.1](public/fonts/OFL.txt). File-type artwork is documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Vellum is available under the [MIT License](LICENSE). Style Script and Inter are licensed separately under the SIL Open Font License 1.1, see [OFL.txt](public/fonts/OFL.txt) and [Inter-OFL.txt](public/fonts/Inter-OFL.txt). File-type artwork is documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 </details>
