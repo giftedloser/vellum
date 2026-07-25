@@ -11,11 +11,14 @@ import WindowControls from "./WindowControls";
 import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type DocumentKind, type RecentItem } from "./recent";
 import { createNote, emptySession, noteTitle, sortNotes, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
 import {
+  AArrowDown,
+  AArrowUp,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Code2,
   FileCode2,
+  FileOutput,
   FileText,
   FileType2,
   Folder,
@@ -63,6 +66,10 @@ type OpenDocument = {
 type Theme = "light" | "dark" | "system";
 type ResolvedTheme = Exclude<Theme, "system">;
 type ContextMenuState = { x: number; y?: number; bottom?: number; maxHeight: number; path?: string; noteId?: string; root?: boolean };
+/* Replaces window.confirm, which rendered as OS browser chrome in WebView2
+   and blocked the event loop. resolve is settled exactly once, by whichever
+   of confirm, cancel, backdrop click or Escape happens first. */
+type ConfirmRequest = { title: string; body: string; confirmLabel: string; danger?: boolean; resolve: (accepted: boolean) => void };
 type ViewerMetrics = { contentWidth: number; viewportWidth: number };
 type EditorFont = "Caskaydia Code NF" | "JetBrains Mono NF" | "Cascadia Mono" | "Zed Mono NF";
 type SidebarMotion = "quick" | "balanced" | "relaxed";
@@ -252,6 +259,7 @@ function App() {
   const startupLaunch = useRef(Boolean(localStorage.getItem("vellum.startup-document:v1")));
   const [sidebarOpen, setSidebarOpen] = useState(() => startupLaunch.current ? false : readStored("vellum.sidebarOpen:v1", true));
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest>();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
   const [contextMenuScrollHint, setContextMenuScrollHint] = useState<"down" | "up">();
@@ -271,6 +279,7 @@ function App() {
   const sessionReady = useRef(false);
   const sessionWritable = useRef(true);
   const lastPersisted = useRef<string>(undefined);
+  const confirmDialog = useRef<HTMLDialogElement>(null);
   const sessionRef = useRef(session);
   const openRequest = useRef(0);
   const rootsRef = useRef<Entry[]>([]);
@@ -304,6 +313,14 @@ function App() {
   const touchRecent = useCallback((path: string) => {
     setRecent((current) => moveRecentToFront(current, path));
   }, []);
+
+  const askConfirm = useCallback((request: Omit<ConfirmRequest, "resolve">) =>
+    new Promise<boolean>((resolve) => setConfirmRequest({ ...request, resolve })), []);
+
+  const settleConfirm = (accepted: boolean) => {
+    confirmRequest?.resolve(accepted);
+    setConfirmRequest(undefined);
+  };
 
   const openDocument = useCallback(async (path: string) => {
     if (!isSupported(path)) return;
@@ -421,7 +438,12 @@ function App() {
         path = ensureExtension(selected, activeDocument.kind);
       } else {
         const modifiedMs = await invoke<number>("document_modified_ms", { path });
-        if (modifiedMs !== activeDocument.modifiedMs && !window.confirm("This file changed outside Vellum. Overwrite the newer version?")) return;
+        if (modifiedMs !== activeDocument.modifiedMs && !await askConfirm({
+          title: "Overwrite newer file?",
+          body: "This file changed outside Vellum since you opened it. Saving replaces the newer version on disk.",
+          confirmLabel: "Overwrite",
+          danger: true,
+        })) return;
       }
 
       const modifiedMs = await invoke<number>("write_document", { path, content: draftContent });
@@ -475,7 +497,13 @@ function App() {
   }, [updateSession]);
 
   const reloadDocument = useCallback(async () => {
-    if (!activeDocument || activeDocument.draft || (dirty && !window.confirm("Discard this recovered draft and reload the file from disk?"))) return;
+    if (!activeDocument || activeDocument.draft) return;
+    if (dirty && !await askConfirm({
+      title: "Discard unsaved changes?",
+      body: "Reloading replaces what you have here with the version saved on disk.",
+      confirmLabel: "Discard and reload",
+      danger: true,
+    })) return;
     updateSession((current) => ({ ...current, documents: current.documents.filter((document) => document.path !== activeDocument.path) }));
     await openDocument(activeDocument.path);
   }, [activeDocument, dirty, openDocument, updateSession]);
@@ -522,9 +550,15 @@ function App() {
     setEditMode(true);
   }, [updateSession]);
 
-  const deleteNote = useCallback((id: string) => {
+  const deleteNote = useCallback(async (id: string) => {
     const note = sessionRef.current.notes.find((item) => item.id === id);
-    if (!note || !window.confirm(`Delete "${noteTitle(note)}"? This cannot be undone.`)) return;
+    if (!note) return;
+    if (!await askConfirm({
+      title: "Delete note?",
+      body: `"${noteTitle(note)}" has never been saved to a file. Deleting it cannot be undone.`,
+      confirmLabel: "Delete",
+      danger: true,
+    })) return;
     updateSession((current) => ({
       ...current,
       notes: current.notes.filter((item) => item.id !== id),
@@ -628,6 +662,12 @@ function App() {
     if (settingsOpen && !dialog?.open) dialog?.showModal();
     if (!settingsOpen && dialog?.open) dialog.close();
   }, [settingsOpen]);
+
+  useEffect(() => {
+    const dialog = confirmDialog.current;
+    if (confirmRequest && !dialog?.open) dialog?.showModal();
+    if (!confirmRequest && dialog?.open) dialog.close();
+  }, [confirmRequest]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1018,7 +1058,7 @@ function App() {
             <span className="control-divider" aria-hidden="true" /></> : null}
             {activeNote || activeDocument?.kind === "text" || editMode ? <>
               <button type="button" disabled={!activeNote && !dirty && !activeDocument?.draft} onClick={() => void saveCurrent(false)} title="Save (Ctrl+S)" aria-label="Save"><Save size={14} /></button>
-              <button type="button" className="save-as-control" onClick={() => void saveCurrent(true)} title="Save As (Ctrl+Shift+S)">Save As</button>
+              <button type="button" onClick={() => void saveCurrent(true)} title="Save As (Ctrl+Shift+S)" aria-label="Save As"><FileOutput size={14} /></button>
               {!activeNote && activeDocument ? <button type="button" disabled={!dirty} onClick={() => {
                 setDraftContent(activeDocument.content);
                 updateSession((current) => ({ ...current, documents: current.documents.filter((document) => document.path !== activeDocument.path) }));
@@ -1026,10 +1066,21 @@ function App() {
               <button type="button" className={preferences.editorWrap ? "active" : ""} onClick={() => setPreferences((current) => ({ ...current, editorWrap: !current.editorWrap }))} title="Word wrap" aria-label="Toggle word wrap"><WrapText size={14} /></button>
               {editorLanguage === "text" ? <div className="editor-counts" aria-label={`${wordCount} words, ${draftContent.length} characters`}><span>{wordCount} words</span><span>{draftContent.length} characters</span></div> : null}
               <span className="control-divider" aria-hidden="true" />
-              <button type="button" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: Math.max(11, current.editorFontSize - 1) }))} title="Decrease editor text" aria-label="Decrease editor text"><ZoomOut size={14} /></button>
+              <button type="button" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: Math.max(11, current.editorFontSize - 1) }))} title="Decrease editor text" aria-label="Decrease editor text"><AArrowDown size={15} /></button>
               <button type="button" className="zoom-value" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: 14 }))} title="Reset editor text size">{preferences.editorFontSize}px</button>
-              <button type="button" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: Math.min(22, current.editorFontSize + 1) }))} title="Increase editor text" aria-label="Increase editor text"><ZoomIn size={14} /></button>
-              <details className="font-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.removeAttribute("open"); }}>
+              <button type="button" onClick={() => setPreferences((current) => ({ ...current, editorFontSize: Math.min(22, current.editorFontSize + 1) }))} title="Increase editor text" aria-label="Increase editor text"><AArrowUp size={15} /></button>
+              <details
+                className="font-picker"
+                onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.removeAttribute("open"); }}
+                onKeyDown={(event) => {
+                  // Every other overlay closes on Escape; this one only closed
+                  // on blur, so Escape did nothing while it was open.
+                  if (event.key !== "Escape" || !event.currentTarget.hasAttribute("open")) return;
+                  event.stopPropagation();
+                  event.currentTarget.removeAttribute("open");
+                  event.currentTarget.querySelector("summary")?.focus();
+                }}
+              >
                 <summary aria-label="Editor font" style={{ fontFamily: editorFonts[preferences.editorFont] }}><span>{preferences.editorFont}</span><ChevronDown size={13} /></summary>
                 <div className="font-picker-menu" role="menu" aria-label="Editor fonts">
                   {editorFontNames.map((font) => <button key={font} type="button" role="menuitemradio" aria-checked={font === preferences.editorFont} className={font === preferences.editorFont ? "active" : ""} style={{ fontFamily: editorFonts[font] }} onClick={(event) => { setPreferences((current) => ({ ...current, editorFont: font })); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{font}</button>)}
@@ -1050,9 +1101,9 @@ function App() {
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); void chooseFolder(); }}><FolderPlus size={15} /><span><strong>Add folder</strong><small>Browse documents in the sidebar</small></span></button>
         <div className="sidebar-add-separator" />
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newNote(); }}><StickyNote size={15} /><span><strong>New Note</strong><small>Create a persistent scratch note</small></span></button>
-        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("markdown"); }}><FileText size={15} /><span><strong>New Markdown</strong><small>Create an empty .md document</small></span></button>
-        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("html"); }}><FileCode2 size={15} /><span><strong>New HTML</strong><small>Create an HTML starter document</small></span></button>
-        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("text"); }}><FileType2 className="icon-text" size={15} /><span><strong>New Text File</strong><small>Create an empty .txt document</small></span></button>
+        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("markdown"); }}><FileTypeIcon kind="markdown" size={15} /><span><strong>New Markdown</strong><small>Create an empty .md document</small></span></button>
+        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("html"); }}><FileTypeIcon kind="html" size={15} /><span><strong>New HTML</strong><small>Create an HTML starter document</small></span></button>
+        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("text"); }}><FileTypeIcon kind="text" size={15} /><span><strong>New Text File</strong><small>Create an empty .txt document</small></span></button>
       </div> : null}
 
       {contextMenu ? <div className="context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y, bottom: contextMenu.bottom, maxHeight: contextMenu.maxHeight }} onPointerDown={(event) => event.stopPropagation()}><div ref={contextMenuScroll} className="context-menu-scroll" style={{ maxHeight: Math.max(0, contextMenu.maxHeight - 2) }} onScroll={(event) => { const menu = event.currentTarget; setContextMenuScrollHint(menu.scrollHeight <= menu.clientHeight + 1 ? undefined : menu.scrollTop + menu.clientHeight >= menu.scrollHeight - 1 ? "up" : "down"); }}>
@@ -1060,9 +1111,9 @@ function App() {
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void choosePath(); }}><Plus size={14} />Open file<span>Ctrl O</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void chooseFolder(); }}><FolderPlus size={14} />Open folder<span>Ctrl Shift O</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newNote(); }}><StickyNote size={14} />New Note<span>Ctrl N</span></button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("markdown"); }}><FileText size={14} />New Markdown</button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("html"); }}><FileCode2 size={14} />New HTML</button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("text"); }}><FileType2 className="icon-text" size={14} />New Text File</button>
+        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("markdown"); }}><FileTypeIcon kind="markdown" size={14} />New Markdown</button>
+        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("html"); }}><FileTypeIcon kind="html" size={14} />New HTML</button>
+        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("text"); }}><FileTypeIcon kind="text" size={14} />New Text File</button>
         {contextMenu.path && isSupported(contextMenu.path) ? <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void openDocument(contextMenu.path!); }}>{documentIcon(contextMenu.path, 14)}Open selected</button> : null}
         <div className="context-menu-separator" />
         <div className="context-menu-label">Document</div>
@@ -1075,8 +1126,8 @@ function App() {
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: 100 })); }}><ZoomIn size={14} />Reset zoom<span>{preferences.viewerZoom}%</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSidebarOpen((value) => !value); }}>{sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}{sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}<span>Ctrl B</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); toggleTheme(); }}>{resolvedTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />}Switch theme</button>
-        {contextMenu.path ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); togglePin(contextMenu.path!); }}>{pinned.includes(contextMenu.path) ? <PinOff size={14} /> : <Pin size={14} />}{pinned.includes(contextMenu.path) ? "Unpin" : "Pin"}</button>{contextMenu.root ? <button type="button" role="menuitem" className="context-danger" onClick={() => { setContextMenu(undefined); removeSidebarItem(contextMenu.path!); }}><X size={14} />Remove from sidebar</button> : null}</> : null}
-        {contextMenu.noteId ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); toggleNotePin(contextMenu.noteId!); }}>{pinnedNotes.includes(contextMenu.noteId) ? <PinOff size={14} /> : <Pin size={14} />}{pinnedNotes.includes(contextMenu.noteId) ? "Unpin note" : "Pin note"}</button><button type="button" role="menuitem" className="context-danger" onClick={() => { const id = contextMenu.noteId!; setContextMenu(undefined); deleteNote(id); }}><Trash2 size={14} />Delete note</button></> : null}
+        {contextMenu.path ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); togglePin(contextMenu.path!); }}>{pinned.includes(contextMenu.path) ? <PinOff size={14} /> : <Pin size={14} />}{pinned.includes(contextMenu.path) ? "Unpin" : "Pin"}</button>{contextMenu.root ? <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); removeSidebarItem(contextMenu.path!); }}><X size={14} />Remove from sidebar</button> : null}</> : null}
+        {contextMenu.noteId ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); toggleNotePin(contextMenu.noteId!); }}>{pinnedNotes.includes(contextMenu.noteId) ? <PinOff size={14} /> : <Pin size={14} />}{pinnedNotes.includes(contextMenu.noteId) ? "Unpin note" : "Pin note"}</button><button type="button" role="menuitem" className="context-danger" onClick={() => { const id = contextMenu.noteId!; setContextMenu(undefined); void deleteNote(id); }}><Trash2 size={14} />Delete note</button></> : null}
         <div className="context-menu-separator" />
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSettingsOpen(true); }}><Settings size={14} />Settings<span>Ctrl ,</span></button>
       </div>{contextMenuScrollHint ? <div className="context-menu-more" aria-hidden="true">{contextMenuScrollHint === "up" ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</div> : null}</div> : null}
@@ -1101,6 +1152,27 @@ function App() {
           <div className="setting-row range-row"><div><strong>Editor text size</strong><span>Adjust source text without changing rendered documents.</span></div><label><input aria-label="Editor text size" type="range" min="11" max="22" value={preferences.editorFontSize} onChange={(event) => setPreferences((current) => ({ ...current, editorFontSize: Number(event.target.value) }))} /><span>{preferences.editorFontSize}px</span></label></div>
           <div className="setting-row"><div><strong>Reset appearance</strong><span>Restore Vellum's default scale, reading, editor, and theme settings.</span></div><button type="button" className="reset-button" onClick={() => setPreferences(defaultPreferences)}><RefreshCw size={14} /> Reset</button></div>
         </section>
+      </dialog>
+
+      <dialog
+        ref={confirmDialog}
+        className="modal-backdrop"
+        aria-labelledby="confirm-title"
+        onCancel={(event) => { event.preventDefault(); settleConfirm(false); }}
+        onClick={(event) => { if (event.target === event.currentTarget) settleConfirm(false); }}
+      >
+        {confirmRequest ? (
+          <section className="confirm-panel" role="alertdialog" aria-describedby="confirm-body">
+            <h2 id="confirm-title">{confirmRequest.title}</h2>
+            <p id="confirm-body">{confirmRequest.body}</p>
+            <div className="confirm-actions">
+              <button type="button" className="confirm-cancel" onClick={() => settleConfirm(false)}>Cancel</button>
+              {/* Cancel is first in source order, so showModal focuses it.
+                  That is the right default when the action is destructive. */}
+              <button type="button" className={confirmRequest.danger ? "confirm-accept danger" : "confirm-accept"} onClick={() => settleConfirm(true)}>{confirmRequest.confirmLabel}</button>
+            </div>
+          </section>
+        ) : null}
       </dialog>
     </main>
   );

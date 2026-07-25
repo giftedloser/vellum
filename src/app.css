@@ -830,6 +830,59 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 .settings-panel button { -webkit-tap-highlight-color: transparent; }
 
+/* Same surface vocabulary as the settings panel, sized for a decision rather
+   than a page. Replaces window.confirm, which drew OS chrome over the app. */
+.confirm-panel {
+  width: min(400px, calc(100% - 44px));
+  padding: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 15px;
+  background-color: var(--surface-strong);
+  box-shadow: 0 30px 90px oklch(0 0 0 / .32);
+  animation: panel-in 220ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.confirm-panel h2 {
+  margin: 0 0 8px;
+  color: var(--text-title);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  letter-spacing: -.008em;
+}
+
+.confirm-panel p {
+  margin: 0 0 18px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.confirm-actions button {
+  min-width: 84px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-body);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.confirm-cancel:hover { background: var(--hover); }
+
+.confirm-accept {
+  border-color: var(--text-body);
+  background: var(--text-body);
+  color: var(--surface);
+}
+
+.confirm-accept:hover { transform: translateY(-1px); }
+.confirm-accept.danger { border-color: #b8463c; background: #b8463c; color: #fff; }
+
 .settings-panel header {
   position: sticky;
   top: 0;
