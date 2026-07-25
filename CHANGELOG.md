@@ -2,6 +2,26 @@
 
 All notable changes to Vellum are documented in this file.
 
+## [1.0.2] - 2026-07-24
+
+### Fixed
+
+- The editor's find panel was invisible. It was styled with variables that were never defined, so it rendered with no background, border, or shadow over the document text, and its checkboxes read "match case Find" and "regexp Find".
+- Notes now move to the top of the sidebar when you edit them. The sort existed but was never applied.
+- Sidebar rows are a uniform height again. Rows carrying a remove control rendered at double height, which affected Recent and folder roots.
+- Typing no longer pays for a Markdown or HTML render that is thrown away, which was measurably slow on large documents.
+- The recent list no longer grows without bound on disk.
+- Section headers now read as a tier above their contents rather than as a sibling, and are no longer outranked in contrast by their own entries.
+
+### Added
+
+- Opening a file from Explorer starts with the sidebar collapsed. This does not overwrite your saved sidebar preference.
+
+### Changed
+
+- The find panel is a single line docked to the bottom edge, styled to match the document control bar, and the document bar lifts clear of it while it is open.
+- Empty sidebar sections read "Empty".
+
 ## [1.0.1] - 2026-07-24
 
 ### Fixed
@@ -62,6 +82,7 @@ All notable changes to Vellum are documented in this file.
 - Kept HTML rendering inside a sandboxed opaque-origin frame.
 - Added JavaScript and Rust dependency audits to continuous integration.
 
+[1.0.2]: https://github.com/giftedloser/vellum/releases/tag/v1.0.2
 [1.0.1]: https://github.com/giftedloser/vellum/releases/tag/v1.0.1
 [1.0.0]: https://github.com/giftedloser/vellum/releases/tag/v1.0.0
 [0.2.1]: https://github.com/giftedloser/vellum/releases/tag/v0.2.1

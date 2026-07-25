@@ -3676,7 +3676,7 @@ dependencies = [
 
 [[package]]
 name = "vellum"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "serde",
  "serde_json",
