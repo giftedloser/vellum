@@ -386,8 +386,13 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
         keymap.of([
           // Listed before searchKeymap so these win: the stock bindings only
           // open the panel, so the shortcut could never close it again.
-          { key: "Mod-f", run: toggleSearchPanel },
-          { key: "Mod-h", run: toggleSearchPanel },
+          // The "search-panel" scope matters as much as the toggle: CodeMirror
+          // binds its keymap to contentDOM, and the panel lives outside it, so
+          // without this the shortcut did nothing while the cursor was in the
+          // Find field, and the unhandled key fell through to WebView2's own
+          // find bar.
+          { key: "Mod-f", run: toggleSearchPanel, scope: "editor search-panel" },
+          { key: "Mod-h", run: toggleSearchPanel, scope: "editor search-panel" },
           ...closeBracketsKeymap,
           ...searchKeymap,
           ...historyKeymap,

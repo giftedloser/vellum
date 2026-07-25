@@ -799,6 +799,11 @@ function App() {
     if (event.key === "Escape" && settingsOpen) { setSettingsOpen(false); return; }
     if (!modifier) return;
     const key = event.key.toLowerCase();
+    // Swallow Ctrl+F everywhere. The editor handles it and prevents the
+    // default itself; this runs later in the bubble and only catches the
+    // cases it did not, which would otherwise open WebView2's own unstyled
+    // find bar over the app.
+    if (key === "f") { event.preventDefault(); return; }
     if (key === "n") { event.preventDefault(); newNote(); }
     else if (key === "s" && hasActiveItem) { event.preventDefault(); void saveCurrent(event.shiftKey); }
     else if (key === "e" && activeDocument && activeDocument.kind !== "text") { event.preventDefault(); setEditMode((value) => !value); }
