@@ -1092,6 +1092,12 @@ function App() {
               <button type="button" className={fitToWidth ? "active" : ""} onClick={fitViewer} title="Fit to width" aria-label="Fit document to width"><Scan size={15} /></button>
               <button type="button" onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Math.min(200, current.viewerZoom + 10) })); }} title="Zoom in" aria-label="Zoom in"><ZoomIn size={15} /></button>
             </>}
+            {/* Outside the mode branches so these keep one fixed position in
+                both modes. Reload and Close previously lived only in the
+                context menu, so no single surface held every document action. */}
+            <span className="control-divider" aria-hidden="true" />
+            <button type="button" disabled={!activeDocument || activeDocument.draft} onClick={() => void reloadDocument()} title="Reload from disk (Ctrl+R)" aria-label="Reload from disk"><RefreshCw size={14} /></button>
+            <button type="button" onClick={closeDocument} title="Close (Ctrl+W)" aria-label="Close"><X size={14} /></button>
           </div></div> : null}
         </section>
       </section>
@@ -1123,7 +1129,6 @@ function App() {
         <button type="button" role="menuitem" disabled={!hasActiveItem} onClick={() => { setContextMenu(undefined); closeDocument(); }}><X size={14} />Close<span>Ctrl W</span></button>
         <div className="context-menu-separator" />
         <div className="context-menu-label">View</div>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: 100 })); }}><ZoomIn size={14} />Reset zoom<span>{preferences.viewerZoom}%</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSidebarOpen((value) => !value); }}>{sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}{sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}<span>Ctrl B</span></button>
         <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); toggleTheme(); }}>{resolvedTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />}Switch theme</button>
         {contextMenu.path ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); togglePin(contextMenu.path!); }}>{pinned.includes(contextMenu.path) ? <PinOff size={14} /> : <Pin size={14} />}{pinned.includes(contextMenu.path) ? "Unpin" : "Pin"}</button>{contextMenu.root ? <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); removeSidebarItem(contextMenu.path!); }}><X size={14} />Remove from sidebar</button> : null}</> : null}
