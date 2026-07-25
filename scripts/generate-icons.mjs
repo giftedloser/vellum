@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import process from "node:process";
 import sharp from "sharp";
 
-const source = "public/vellum-icon-dark.png";
+const source = "assets/vellum-icon-dark.png";
 const iconDirectory = "src-tauri/icons";
 const rasterSource = `${iconDirectory}/icon-source.png`;
 
