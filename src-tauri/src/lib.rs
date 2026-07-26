@@ -275,6 +275,18 @@ fn modified_ms(path: &Path) -> Result<u64, String> {
         .as_millis() as u64)
 }
 
+fn recent_ms(path: &Path) -> Result<u64, String> {
+    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    let timestamp = metadata
+        .modified()
+        .or_else(|_| metadata.created())
+        .map_err(|error| error.to_string())?;
+    Ok(timestamp
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64)
+}
+
 fn unique_sibling(parent: &Path, label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -542,6 +554,21 @@ fn document_modified_ms(path: String, state: State<'_, AppState>) -> Result<u64,
 }
 
 #[tauri::command]
+fn path_recent_ms(path: String, state: State<'_, AppState>) -> Result<u64, String> {
+    let canonical = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let roots = state
+        .allowed_roots
+        .lock()
+        .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
+    if !is_authorized(&canonical, &roots) {
+        return Err("This path is not in the active Vellum library.".into());
+    }
+    recent_ms(&canonical)
+}
+
+#[tauri::command]
 fn write_document(
     path: String,
     content: String,
@@ -652,6 +679,7 @@ pub fn run() {
             read_document,
             document_asset_base,
             document_modified_ms,
+            path_recent_ms,
             write_document
         ])
         .run(tauri::generate_context!())

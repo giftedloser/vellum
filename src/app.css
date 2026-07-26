@@ -841,12 +841,14 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .sidebar-add-menu button > span { display: grid; gap: 2px; }
 .sidebar-add-menu strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
 .sidebar-add-menu small { overflow: hidden; color: var(--text-secondary); font-size: var(--text-2xs); white-space: nowrap; text-overflow: ellipsis; }
-.pinned-drag-item { position: relative; min-width: 0; }
+.pinned-drag-item { position: relative; min-width: 0; transition: opacity 120ms ease; }
 .pinned-drag-item:active { cursor: grabbing; }
+.pinned-drag-item.is-dragging { opacity: .4; }
+.app-shell.pin-dragging, .app-shell.pin-dragging * { cursor: grabbing !important; }
 .pinned-drag-item.drop-before::before,
 .pinned-drag-item.drop-after::after { position: absolute; z-index: 2; right: 8px; left: 8px; height: 2px; background: color-mix(in srgb, var(--accent) 55%, transparent); content: ""; pointer-events: none; }
-.pinned-drag-item.drop-before::before { top: 0; }
-.pinned-drag-item.drop-after::after { bottom: 0; }
+.pinned-drag-item.drop-before::before { top: -1px; }
+.pinned-drag-item.drop-after::after { bottom: -1px; }
 .sidebar-add-separator { height: 1px; margin: 4px 6px; background: var(--border); }
 
 /* ------------------------------------------------------------- settings */

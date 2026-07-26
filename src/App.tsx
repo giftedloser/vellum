@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -13,7 +13,7 @@ import { marked } from "marked";
 import { contextMenuSections, type ContextMenuAction, type ContextMenuTarget } from "./contextMenu";
 import FileTypeIcon from "./FileTypeIcon";
 import WindowControls from "./WindowControls";
-import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type DocumentKind, type RecentItem } from "./recent";
+import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, withoutContainedFiles, type DocumentKind, type RecentItem } from "./recent";
 import { fontScaleOptions, interfaceScaleOptions, normalizeSegmentedPreferences, readingWidthOptions, sidebarOpacityOptions, stepValue, type SegmentOption, type SegmentValue } from "./settings";
 import { contentTitle, emptySession, noteTitle, reorderItems, sortNotes, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
 import {
@@ -116,6 +116,7 @@ type Preferences = {
 
 const appWindow = isTauri() ? getCurrentWindow() : undefined;
 const allowedExtensions = ["md", "markdown", "html", "htm", "txt"];
+const pinKey = (kind: "document" | "note", id: string) => `${kind}:${id}`;
 const defaultPreferences: Preferences = {
   theme: "system",
   interfaceScale: 100,
@@ -343,6 +344,7 @@ function App() {
   const [recent, setRecent] = useState<RecentItem[]>(() => readStored("vellum.recent:v2", []));
   const [pinned, setPinned] = useState<string[]>(() => readStored("vellum.pinned:v2", []));
   const [pinnedNotes, setPinnedNotes] = useState<string[]>(() => readStored("vellum.pinnedNotes:v1", []));
+  const [pinOrder, setPinOrder] = useState<string[]>(() => readStored("vellum.pinOrder:v1", []));
   const [folderWorkspaces, setFolderWorkspaces] = useState<Record<string, Workspace>>(() => readStored("vellum.folderWorkspaces:v1", {}));
   const [session, setSession] = useState<SessionState>(emptySession);
   const [activeDocument, setActiveDocument] = useState<OpenDocument>();
@@ -357,7 +359,8 @@ function App() {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest>();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
-  const [pinDrop, setPinDrop] = useState<{ kind: "document" | "note"; id: string; after: boolean }>();
+  const [pinDrop, setPinDrop] = useState<{ key: string; after: boolean }>();
+  const [draggedPinKey, setDraggedPinKey] = useState<string>();
   const [contextMenuScrollHint, setContextMenuScrollHint] = useState<"down" | "up">();
   const [recentExpanded, setRecentExpanded] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Partial<Record<CollapsibleSection, boolean>>>(() => readStored("vellum.collapsedSections:v1", {}));
@@ -383,6 +386,8 @@ function App() {
   const openRequest = useRef(0);
   const rootsRef = useRef<Entry[]>([]);
   const activeDocumentRef = useRef<OpenDocument | undefined>(undefined);
+  const pinPointer = useRef<{ key: string; pointerId: number; startX: number; startY: number; dragging: boolean } | undefined>(undefined);
+  const suppressPinClick = useRef(false);
 
   const activePath = activeDocument?.draft ? undefined : activeDocument?.path;
   const activeNote = activeNoteId ? session.notes.find((note) => note.id === activeNoteId) : undefined;
@@ -412,8 +417,8 @@ function App() {
     if (contextMenu) requestAnimationFrame(() => contextMenuElement.current?.querySelector<HTMLButtonElement>("button")?.focus());
   }, [contextMenu]);
 
-  const touchRecent = useCallback((path: string) => {
-    setRecent((current) => moveRecentToFront(current, path));
+  const touchRecent = useCallback((path: string, modifiedMs: number) => {
+    setRecent((current) => moveRecentToFront(current, path, modifiedMs));
   }, []);
 
   const askConfirm = useCallback((request: Omit<ConfirmRequest, "resolve">) =>
@@ -458,7 +463,7 @@ function App() {
         active: { type: "document", path },
         workspace: kind === "text" ? "notes" : "documents",
       }));
-      touchRecent(path);
+      touchRecent(path, modifiedMs);
     } catch (cause) {
       if (request === openRequest.current) setError(String(cause));
     }
@@ -486,7 +491,7 @@ function App() {
       const entry = await invoke<Entry>("scan_path", { path: selected });
       setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
       setFolderWorkspaces((current) => ({ ...current, [entry.path]: targetWorkspace }));
-      touchRecent(entry.path);
+      touchRecent(entry.path, await invoke<number>("path_recent_ms", { path: entry.path }));
       updateSession((current) => ({ ...current, workspace: targetWorkspace }));
     } catch (cause) {
       setError(String(cause));
@@ -508,7 +513,10 @@ function App() {
         setActiveNoteId(undefined);
         setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: "text", modifiedMs });
         setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
-        if (pinnedNotes.includes(activeNote.id)) setPinned((current) => current.includes(entry.path) ? current : [...current, entry.path]);
+        if (pinnedNotes.includes(activeNote.id)) {
+          setPinned((current) => current.includes(entry.path) ? current : [...current, entry.path]);
+          setPinOrder((current) => current.map((key) => key === pinKey("note", activeNote.id) ? pinKey("document", entry.path) : key));
+        }
         setPinnedNotes((current) => current.filter((id) => id !== activeNote.id));
         updateSession((current) => ({
           ...current,
@@ -517,7 +525,7 @@ function App() {
           active: { type: "document", path: entry.path },
           workspace: "notes",
         }));
-        touchRecent(entry.path);
+        touchRecent(entry.path, modifiedMs);
       } catch (cause) {
         setError(String(cause));
       }
@@ -553,14 +561,17 @@ function App() {
       const assetBaseUrl = documentKind(entry.path) === "html" ? await invoke<string>("document_asset_base", { path: entry.path }) : undefined;
       setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: documentKind(entry.path), modifiedMs, assetBaseUrl });
       setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
-      if (pinned.includes(activeDocument.path)) setPinned((current) => [...current.filter((path) => path !== activeDocument.path && path !== entry.path), entry.path]);
+      if (pinned.includes(activeDocument.path)) {
+        setPinned((current) => [...current.filter((path) => path !== activeDocument.path && path !== entry.path), entry.path]);
+        setPinOrder((current) => current.map((key) => key === pinKey("document", activeDocument.path) ? pinKey("document", entry.path) : key));
+      }
       updateSession((current) => ({
         ...current,
         documents: current.documents.filter((document) => document.path !== activeDocument.path && document.path !== entry.path),
         active: { type: "document", path: entry.path },
         workspace: documentKind(entry.path) === "text" ? "notes" : "documents",
       }));
-      touchRecent(entry.path);
+      touchRecent(entry.path, modifiedMs);
     } catch (cause) {
       setError(String(cause));
     }
@@ -651,6 +662,7 @@ function App() {
       active: current.active?.type === "note" && current.active.id === id ? null : current.active,
     }));
     setPinnedNotes((current) => current.filter((item) => item !== id));
+    setPinOrder((current) => current.filter((key) => key !== pinKey("note", id)));
     if (activeNoteId === id) {
       setActiveNoteId(undefined);
       setDraftContent("");
@@ -695,7 +707,14 @@ function App() {
       const missing = new Set(savedRoots.filter((_, index) => !entries[index]));
       setRoots(restored);
       rootsRef.current = restored;
-      setRecent((current) => current.length ? current.filter((item) => !missing.has(item.path)) : restored.map((entry, index) => ({ path: entry.path, lastOpened: Date.now() - index })));
+      const storedRecent = readStored<RecentItem[]>("vellum.recent:v2", []);
+      const recentPaths = storedRecent.length ? storedRecent.map((item) => item.path) : restored.map((entry) => entry.path);
+      const refreshedRecent = await Promise.all(recentPaths.filter((path) => !missing.has(path)).map(async (path) => ({
+        path,
+        modifiedMs: await invoke<number>("path_recent_ms", { path }).catch(() => 0),
+      })));
+      if (cancelled) return;
+      setRecent(refreshedRecent);
       setPinned((current) => current.filter((path) => !missing.has(path)));
       libraryRestored.current = true;
       const startupDocument = readStored<string | undefined>("vellum.startup-document:v1", undefined);
@@ -820,6 +839,7 @@ function App() {
   useEffect(() => localStorage.setItem("vellum.recent:v2", JSON.stringify(recent)), [recent]);
   useEffect(() => localStorage.setItem("vellum.pinned:v2", JSON.stringify(pinned)), [pinned]);
   useEffect(() => localStorage.setItem("vellum.pinnedNotes:v1", JSON.stringify(pinnedNotes)), [pinnedNotes]);
+  useEffect(() => localStorage.setItem("vellum.pinOrder:v1", JSON.stringify(pinOrder)), [pinOrder]);
   useEffect(() => localStorage.setItem("vellum.folderWorkspaces:v1", JSON.stringify(folderWorkspaces)), [folderWorkspaces]);
   useEffect(() => {
     if (startupLaunch.current) return;
@@ -997,8 +1017,8 @@ function App() {
   const openItems = workspaceProgressItems
     .filter((item) => !pinned.includes(item.path));
   const openPaths = new Set(openItems.map((item) => item.path));
-  const recentEntries = [...recent]
-    .sort((a, b) => b.lastOpened - a.lastOpened)
+  const recentCandidates = [...recent]
+    .sort((a, b) => b.modifiedMs - a.modifiedMs)
     .flatMap((item) => {
       if (pinnedSet.has(item.path) || openPaths.has(item.path)) return [];
       const entry = findEntry(roots, item.path);
@@ -1007,6 +1027,7 @@ function App() {
       if (!filtered) return [];
       return [filtered];
     });
+  const recentEntries = withoutContainedFiles(recentCandidates);
   const displayedRecentEntries = visibleRecents(recentEntries, recentExpanded);
   const hiddenRecentCount = recentEntries.length - displayedRecentEntries.length;
   const displayedNotes = sortNotes(session.notes);
@@ -1015,54 +1036,99 @@ function App() {
     return note ? [note] : [];
   });
   const inProgressInternalNotes = displayedNotes.filter((note) => !pinnedNotes.includes(note.id));
+  const allPinKeys = [...pinnedNotes.map((id) => pinKey("note", id)), ...pinned.map((path) => pinKey("document", path))];
+  const allPinKeySet = new Set(allPinKeys);
+  const orderedPinKeys = [...pinOrder.filter((key) => allPinKeySet.has(key)), ...allPinKeys.filter((key) => !pinOrder.includes(key))];
+  const visibleNotePins = new Map(pinnedInternalNotes.map((note) => [pinKey("note", note.id), note]));
+  const visibleDocumentPins = new Set([...pinnedProgressItems, ...pinnedEntries].map((item) => pinKey("document", item.path)));
+  const visiblePinKeys = orderedPinKeys.filter((key) =>
+    (workspace === "notes" && visibleNotePins.has(key)) || visibleDocumentPins.has(key));
 
   function removeSidebarItem(path: string) {
     setRecent((current) => current.filter((item) => item.path !== path));
     setPinned((current) => current.filter((item) => item !== path));
+    setPinOrder((current) => current.filter((key) => key !== pinKey("document", path)));
     setRoots((current) => current.filter((entry) => entry.path !== path));
     setFolderWorkspaces((current) => Object.fromEntries(Object.entries(current).filter(([item]) => item !== path)));
   }
 
-  function togglePin(path: string) {
-    setPinned((current) => current.includes(path) ? current.filter((item) => item !== path) : [...current, path]);
-    if (!recent.some((item) => item.path === path)) touchRecent(path);
+  async function togglePin(path: string) {
+    const key = pinKey("document", path);
+    if (pinned.includes(path)) {
+      setPinned((current) => current.filter((item) => item !== path));
+      setPinOrder((current) => current.filter((item) => item !== key));
+    } else {
+      setPinned((current) => [...current, path]);
+      setPinOrder((current) => [...current.filter((item) => item !== key), key]);
+      if (!recent.some((item) => item.path === path)) touchRecent(path, await invoke<number>("path_recent_ms", { path }));
+    }
   }
 
   function toggleNotePin(id: string) {
-    setPinnedNotes((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+    const key = pinKey("note", id);
+    if (pinnedNotes.includes(id)) {
+      setPinnedNotes((current) => current.filter((item) => item !== id));
+      setPinOrder((current) => current.filter((item) => item !== key));
+    } else {
+      setPinnedNotes((current) => [...current, id]);
+      setPinOrder((current) => [...current.filter((item) => item !== key), key]);
+    }
   }
 
-  function pinDragProps(kind: "document" | "note", id: string) {
-    const type = `application/x-vellum-${kind}-pin`;
+  function pinDragProps(key: string) {
+    const targetAt = (x: number, y: number) => {
+      const target = document.elementFromPoint(x, y)?.closest<HTMLElement>(".pinned-drag-item");
+      const targetKey = target?.dataset.pinKey;
+      if (!target || !targetKey) return;
+      const bounds = target.getBoundingClientRect();
+      return { key: targetKey, after: y >= bounds.top + bounds.height / 2 };
+    };
+    const finish = (event: ReactPointerEvent<HTMLDivElement>, cancelled = false) => {
+      const pointer = pinPointer.current;
+      if (!pointer || pointer.pointerId !== event.pointerId) return;
+      if (pointer.dragging) {
+        event.preventDefault();
+        const target = cancelled ? undefined : targetAt(event.clientX, event.clientY);
+        if (target) setPinOrder(() => reorderItems(orderedPinKeys, pointer.key, target.key, target.after));
+        suppressPinClick.current = true;
+        window.setTimeout(() => { suppressPinClick.current = false; }, 0);
+      }
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      pinPointer.current = undefined;
+      setPinDrop(undefined);
+      setDraggedPinKey(undefined);
+    };
     return {
-      draggable: true,
-      onDragStart: (event: ReactDragEvent) => {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData(type, id);
+      "data-pin-key": key,
+      onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (event.button !== 0) return;
+        pinPointer.current = { key, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dragging: false };
+        event.currentTarget.setPointerCapture(event.pointerId);
       },
-      onDragOver: (event: ReactDragEvent) => {
-        if (!event.dataTransfer.types.includes(type)) return;
+      onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => {
+        const pointer = pinPointer.current;
+        if (!pointer || pointer.pointerId !== event.pointerId) return;
+        if (!pointer.dragging && Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) < 4) return;
+        if (!pointer.dragging) {
+          pointer.dragging = true;
+          setDraggedPinKey(pointer.key);
+        }
         event.preventDefault();
-        const bounds = event.currentTarget.getBoundingClientRect();
-        setPinDrop({ kind, id, after: event.clientY >= bounds.top + bounds.height / 2 });
+        const target = targetAt(event.clientX, event.clientY);
+        if (target) setPinDrop(target);
       },
-      onDragLeave: (event: ReactDragEvent) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPinDrop(undefined);
-      },
-      onDrop: (event: ReactDragEvent) => {
-        const source = event.dataTransfer.getData(type);
-        if (!source) return;
+      onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => finish(event),
+      onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => finish(event, true),
+      onClickCapture: (event: ReactMouseEvent<HTMLDivElement>) => {
+        if (!suppressPinClick.current) return;
         event.preventDefault();
-        const bounds = event.currentTarget.getBoundingClientRect();
-        (kind === "document" ? setPinned : setPinnedNotes)((current) => reorderItems(current, source, id, event.clientY >= bounds.top + bounds.height / 2));
-        setPinDrop(undefined);
+        event.stopPropagation();
       },
-      onDragEnd: () => setPinDrop(undefined),
     };
   }
 
-  function pinDropClass(kind: "document" | "note", id: string) {
-    return pinDrop?.kind === kind && pinDrop.id === id ? ` drop-${pinDrop.after ? "after" : "before"}` : "";
+  function pinDropClass(key: string) {
+    return pinDrop?.key === key ? ` drop-${pinDrop.after ? "after" : "before"}` : "";
   }
 
   function toggleSection(section: CollapsibleSection) {
@@ -1365,7 +1431,7 @@ function App() {
   const resolvedContextMenu = contextMenu ? contextMenuSections(contextMenu.target) : [];
 
   return (
-    <main className={`app-shell ${htmlMode ? "html-mode" : ""} ${sidebarOpen ? "" : "sidebar-collapsed"} ${preferences.autoHideControls ? "" : "controls-always-visible"}`} onContextMenu={showContextMenu}>
+    <main className={`app-shell ${htmlMode ? "html-mode" : ""} ${sidebarOpen ? "" : "sidebar-collapsed"} ${preferences.autoHideControls ? "" : "controls-always-visible"} ${draggedPinKey ? "pin-dragging" : ""}`} onContextMenu={showContextMenu}>
       <div className={`global-drag-region ${sidebarOpen ? "sidebar-visible" : ""}`} role="presentation" data-tauri-drag-region onDoubleClick={() => appWindow?.toggleMaximize()} />
       <section className="workspace">
         <aside className="sidebar" aria-label="Workspace sidebar and application controls">
@@ -1386,12 +1452,14 @@ function App() {
           <section className="sidebar-section pinned-section">
             <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.pinned} onClick={() => toggleSection("pinned")}>{collapsedSections.pinned ? <ChevronRight size={11} /> : <ChevronDown size={11} />}Pinned</button>
             {!collapsedSections.pinned ? <div className="tree">
-              {workspace === "notes" ? pinnedInternalNotes.map((note) => <div key={note.id} className={`pinned-drag-item${pinDropClass("note", note.id)}`} {...pinDragProps("note", note.id)}>{renderNoteRow(note)}</div>) : null}
-              {pinned.flatMap((path) => {
+              {visiblePinKeys.flatMap((key) => {
+                const note = visibleNotePins.get(key);
+                if (note) return [<div key={key} className={`pinned-drag-item${draggedPinKey === key ? " is-dragging" : ""}${pinDropClass(key)}`} {...pinDragProps(key)}>{renderNoteRow(note)}</div>];
+                const path = key.slice("document:".length);
                 const progress = pinnedProgressItems.find((item) => item.path === path);
-                if (progress) return [<div key={path} className={`pinned-drag-item${pinDropClass("document", path)}`} {...pinDragProps("document", path)}>{renderProgressRow(progress)}</div>];
+                if (progress) return [<div key={key} className={`pinned-drag-item${draggedPinKey === key ? " is-dragging" : ""}${pinDropClass(key)}`} {...pinDragProps(key)}>{renderProgressRow(progress)}</div>];
                 const entry = pinnedEntries.find((item) => item.path === path);
-                return entry ? [<div key={path} className={`pinned-drag-item${pinDropClass("document", path)}`} {...pinDragProps("document", path)}><TreeNode entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} /></div>] : [];
+                return entry ? [<div key={key} className={`pinned-drag-item${draggedPinKey === key ? " is-dragging" : ""}${pinDropClass(key)}`} {...pinDragProps(key)}><TreeNode entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} /></div>] : [];
               })}
               {!pinnedEntries.length && !pinnedProgressItems.length && (workspace !== "notes" || !pinnedInternalNotes.length) ? <div className="section-empty">Empty</div> : null}
             </div> : null}
