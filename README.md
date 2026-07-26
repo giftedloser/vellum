@@ -14,6 +14,9 @@
 
 Vellum opens local Markdown, HTML, and text documents in a clean, distraction-free window. It also keeps independent scratch notes ready without requiring a filename or Save dialog.
 
+<img width="1280" height="820" alt="image" src="https://github.com/user-attachments/assets/5bb41a04-8a8a-4017-919b-a88c27a9002e" />
+
+
 ## Why Vellum
 
 - **Read without clutter.** The interface stays out of the way until you need it.
