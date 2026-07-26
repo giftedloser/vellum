@@ -95,7 +95,7 @@ type ContextMenuRequest = Pick<ContextMenuState, "target" | "path" | "noteId" | 
    of confirm, cancel, backdrop click or Escape happens first. */
 type ConfirmRequest = { title: string; body: string; confirmLabel: string; danger?: boolean; resolve: (accepted: boolean) => void };
 type ViewerMetrics = { contentWidth: number; viewportWidth: number };
-type EditorFont = "Caskaydia Code NF" | "JetBrains Mono NF" | "Cascadia Mono" | "Zed Mono NF";
+type EditorFont = "Zed Mono" | "JetBrains Mono" | "Cascadia Mono" | "Consolas";
 type SidebarMotion = "quick" | "balanced" | "relaxed";
 type CollapsibleSection = "pinned" | "open" | "recent";
 
@@ -126,7 +126,7 @@ const defaultPreferences: Preferences = {
   lineHeight: 170,
   editorWrap: true,
   editorFontSize: 14,
-  editorFont: "Caskaydia Code NF",
+  editorFont: "Zed Mono",
   autoHideControls: true,
   sidebarMotion: "balanced",
 };
@@ -142,21 +142,23 @@ const sidebarMotionOptions = [
   { label: "Fast", value: "quick" },
 ] as const;
 const editorFonts: Record<EditorFont, string> = {
-  "Caskaydia Code NF": '"CaskaydiaCove NF", "CaskaydiaCove Nerd Font", "Cascadia Mono", monospace',
-  "JetBrains Mono NF": '"JetBrainsMono NF", "JetBrainsMono Nerd Font", "Cascadia Mono", monospace',
+  "Zed Mono": '"Zed Mono", Consolas, monospace',
+  "JetBrains Mono": '"JetBrains Mono", Consolas, monospace',
   "Cascadia Mono": '"Cascadia Mono", Consolas, monospace',
-  "Zed Mono NF": '"ZedMono NF", "ZedMono Nerd Font", "Cascadia Mono", monospace',
+  "Consolas": "Consolas, monospace",
 };
 const editorFontNames = Object.keys(editorFonts) as EditorFont[];
 const maxViewerSelectionChars = 1_000_000;
 const editorFontAliases: Record<string, EditorFont> = {
-  "Caskaydia Code NF": "Caskaydia Code NF",
-  "JetBrains Mono NF": "JetBrains Mono NF",
+  "Zed Mono": "Zed Mono",
+  "JetBrains Mono": "JetBrains Mono",
   "Cascadia Mono": "Cascadia Mono",
-  "Zed Mono NF": "Zed Mono NF",
-  "Cascadia Code": "Caskaydia Code NF",
-  "Fira Code": "Zed Mono NF",
-  "JetBrains Mono": "JetBrains Mono NF",
+  "Consolas": "Consolas",
+  "Zed Mono NF": "Zed Mono",
+  "JetBrains Mono NF": "JetBrains Mono",
+  "Caskaydia Code NF": "Cascadia Mono",
+  "Cascadia Code": "Cascadia Mono",
+  "Fira Code": "Zed Mono",
   "IBM Plex Mono": "Cascadia Mono",
 };
 
