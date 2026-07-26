@@ -1,10 +1,9 @@
 <p align="center">
-  <img src="assets/vellum-icon-dark.png" width="112" height="112" alt="Vellum icon" />  <img src="assets/vellum-wordmark.png" width="320" alt="Vellum" />
-</p>
-
-<p align="center">
+  <img src="assets/vellum-icon-dark.png" width="112" height="112" alt="Vellum icon" />
   <img src="assets/vellum-wordmark.png" width="320" alt="Vellum" />
 </p>
+
+
 
 <p align="center">A quiet desktop home for documents and persistent scratch notes.</p>
 
