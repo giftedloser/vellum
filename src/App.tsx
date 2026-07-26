@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -311,16 +311,7 @@ function SegmentedControl<T extends SegmentValue>({ label, value, options, onCha
   };
 
   return (
-    <div
-      className="segmented-control"
-      role="radiogroup"
-      aria-label={label}
-      style={{
-        "--segment-count": options.length,
-        "--segment-offset": `${Math.max(0, options.findIndex((option) => option.value === value)) * 100}%`,
-      } as CSSProperties}
-    >
-      <span className="segmented-thumb" aria-hidden="true" />
+    <div className="segmented-control" role="radiogroup" aria-label={label}>
       {options.map((option, index) => {
         const selected = option.value === value;
         return <button key={String(option.value)} type="button" role="radio" aria-checked={selected} tabIndex={selected ? 0 : -1} className={selected ? "selected" : ""} onClick={() => onChange(option.value)} onKeyDown={(event) => moveSelection(event, index)}>{option.label}</button>;
@@ -366,6 +357,7 @@ function App() {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest>();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
+  const [pinDrop, setPinDrop] = useState<{ kind: "document" | "note"; id: string; after: boolean }>();
   const [contextMenuScrollHint, setContextMenuScrollHint] = useState<"down" | "up">();
   const [recentExpanded, setRecentExpanded] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Partial<Record<CollapsibleSection, boolean>>>(() => readStored("vellum.collapsedSections:v1", {}));
@@ -1049,15 +1041,28 @@ function App() {
         event.dataTransfer.setData(type, id);
       },
       onDragOver: (event: ReactDragEvent) => {
-        if (event.dataTransfer.types.includes(type)) event.preventDefault();
+        if (!event.dataTransfer.types.includes(type)) return;
+        event.preventDefault();
+        const bounds = event.currentTarget.getBoundingClientRect();
+        setPinDrop({ kind, id, after: event.clientY >= bounds.top + bounds.height / 2 });
+      },
+      onDragLeave: (event: ReactDragEvent) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPinDrop(undefined);
       },
       onDrop: (event: ReactDragEvent) => {
         const source = event.dataTransfer.getData(type);
         if (!source) return;
         event.preventDefault();
-        (kind === "document" ? setPinned : setPinnedNotes)((current) => reorderItems(current, source, id));
+        const bounds = event.currentTarget.getBoundingClientRect();
+        (kind === "document" ? setPinned : setPinnedNotes)((current) => reorderItems(current, source, id, event.clientY >= bounds.top + bounds.height / 2));
+        setPinDrop(undefined);
       },
+      onDragEnd: () => setPinDrop(undefined),
     };
+  }
+
+  function pinDropClass(kind: "document" | "note", id: string) {
+    return pinDrop?.kind === kind && pinDrop.id === id ? ` drop-${pinDrop.after ? "after" : "before"}` : "";
   }
 
   function toggleSection(section: CollapsibleSection) {
@@ -1381,12 +1386,12 @@ function App() {
           <section className="sidebar-section pinned-section">
             <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.pinned} onClick={() => toggleSection("pinned")}>{collapsedSections.pinned ? <ChevronRight size={11} /> : <ChevronDown size={11} />}Pinned</button>
             {!collapsedSections.pinned ? <div className="tree">
-              {workspace === "notes" ? pinnedInternalNotes.map((note) => <div key={note.id} className="pinned-drag-item" {...pinDragProps("note", note.id)}>{renderNoteRow(note)}</div>) : null}
+              {workspace === "notes" ? pinnedInternalNotes.map((note) => <div key={note.id} className={`pinned-drag-item${pinDropClass("note", note.id)}`} {...pinDragProps("note", note.id)}>{renderNoteRow(note)}</div>) : null}
               {pinned.flatMap((path) => {
                 const progress = pinnedProgressItems.find((item) => item.path === path);
-                if (progress) return [<div key={path} className="pinned-drag-item" {...pinDragProps("document", path)}>{renderProgressRow(progress)}</div>];
+                if (progress) return [<div key={path} className={`pinned-drag-item${pinDropClass("document", path)}`} {...pinDragProps("document", path)}>{renderProgressRow(progress)}</div>];
                 const entry = pinnedEntries.find((item) => item.path === path);
-                return entry ? [<div key={path} className="pinned-drag-item" {...pinDragProps("document", path)}><TreeNode entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} /></div>] : [];
+                return entry ? [<div key={path} className={`pinned-drag-item${pinDropClass("document", path)}`} {...pinDragProps("document", path)}><TreeNode entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} /></div>] : [];
               })}
               {!pinnedEntries.length && !pinnedProgressItems.length && (workspace !== "notes" || !pinnedInternalNotes.length) ? <div className="section-empty">Empty</div> : null}
             </div> : null}
@@ -1429,7 +1434,7 @@ function App() {
             ) : activeDocument?.kind === "markdown" ? (
               <article key={activeDocument.path} className="document markdown-body" dangerouslySetInnerHTML={{ __html: renderedMarkdown }} />
             ) : activeDocument ? (
-              <iframe key={activeDocument.path} ref={htmlFrame} className="html-frame" title={activeDocument.name} srcDoc={renderedHtml} sandbox="allow-forms allow-modals allow-popups allow-scripts" allow="clipboard-write" referrerPolicy="no-referrer" onLoad={() => { htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: preferences.viewerZoom }, "*"); htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-measure" }, "*"); }} />
+              <iframe key={activeDocument.path} ref={htmlFrame} className="html-frame" title={activeDocument.name} srcDoc={renderedHtml} sandbox="allow-forms allow-scripts" allow="clipboard-write" referrerPolicy="no-referrer" onLoad={() => { htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: preferences.viewerZoom }, "*"); htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-measure" }, "*"); }} />
             ) : null}
           </div>
           {hasActiveItem ? <div className="document-controls-wrap"><div className="document-controls" aria-label={activeNote || editMode ? "Editor controls" : "Viewer controls"}>

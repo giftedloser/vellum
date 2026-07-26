@@ -20,12 +20,13 @@
         "minHeight": 520,
         "decorations": false,
         "transparent": true,
-        "shadow": false,
+        "shadow": true,
         "resizable": true,
         "center": true,
         "devtools": false,
         "browserExtensionsEnabled": false,
         "generalAutofillEnabled": false,
+        "dragDropEnabled": false,
         "zoomHotkeysEnabled": false
       }
     ],

@@ -22,7 +22,8 @@ assert.equal(session.noteTitle(notes[0]), "Untitled 2");
 assert.equal(session.noteTitle(notes[1]), "First line");
 assert.equal(session.contentTitle(`  ${"Long title ".repeat(8)}\nSecond`, "Untitled"), `${"Long title ".repeat(4).trim()}…`);
 assert.deepEqual(session.sortNotes(notes).map((note) => note.id), ["a", "b"]);
-assert.deepEqual(session.reorderItems(["a", "b", "c"], "a", "c"), ["b", "c", "a"]);
+assert.deepEqual(session.reorderItems(["a", "b", "c"], "a", "c"), ["b", "a", "c"]);
+assert.deepEqual(session.reorderItems(["a", "b", "c"], "a", "c", true), ["b", "c", "a"]);
 assert.deepEqual(session.reorderItems(["a", "b", "c"], "missing", "c"), ["a", "b", "c"]);
 
 const recovery = { path: "notes.txt", content: "draft", baseModifiedMs: 10, updatedAt: 20 };

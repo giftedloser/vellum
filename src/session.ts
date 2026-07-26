@@ -52,12 +52,12 @@ export function sortNotes(notes: Note[]) {
   );
 }
 
-export function reorderItems(items: string[], source: string, target: string) {
+export function reorderItems(items: string[], source: string, target: string, after = false) {
   const from = items.indexOf(source);
-  const to = items.indexOf(target);
-  if (from < 0 || to < 0 || from === to) return items;
+  if (from < 0 || !items.includes(target) || source === target) return items;
   const reordered = [...items];
-  reordered.splice(to, 0, reordered.splice(from, 1)[0]);
+  reordered.splice(from, 1);
+  reordered.splice(reordered.indexOf(target) + Number(after), 0, source);
   return reordered;
 }
 
