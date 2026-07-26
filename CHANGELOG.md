@@ -2,6 +2,24 @@
 
 All notable changes to Vellum are documented in this file.
 
+## [1.0.4] - 2026-07-26
+
+### Added
+
+- Right-click menus now match the clicked sidebar item, editor, viewer, note, draft, or empty workspace, including Open in Explorer where a saved path exists.
+- Editor context menus now provide undo, redo, cut, copy, select all, and find using the active CodeMirror editor.
+
+### Fixed
+
+- Right-clicking one sidebar file no longer offers document actions for a different open file.
+- Viewer selections can be copied from sandboxed HTML and Markdown frames, and Escape now dismisses their context menus.
+- Settings scrollbars remain at the panel edge without clipped arrow controls.
+
+### Changed
+
+- Settings uses compact segmented controls and numeric steppers with keyboard support, persistent preset migration, and theme-matched sliding selection indicators.
+- Default interface and reading scales are now 100 percent, and the sidebar is more opaque for improved legibility.
+
 ## [1.0.3] - 2026-07-25
 
 ### Fixed
@@ -94,6 +112,7 @@ All notable changes to Vellum are documented in this file.
 - Kept HTML rendering inside a sandboxed opaque-origin frame.
 - Added JavaScript and Rust dependency audits to continuous integration.
 
+[1.0.4]: https://github.com/giftedloser/vellum/releases/tag/v1.0.4
 [1.0.3]: https://github.com/giftedloser/vellum/releases/tag/v1.0.3
 [1.0.2]: https://github.com/giftedloser/vellum/releases/tag/v1.0.2
 [1.0.1]: https://github.com/giftedloser/vellum/releases/tag/v1.0.1

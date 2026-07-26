@@ -1,14 +1,20 @@
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { redo, redoDepth, selectAll, undo, undoDepth } from "@codemirror/commands";
+import { openSearchPanel } from "@codemirror/search";
+import type { EditorView } from "@codemirror/view";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import { contextMenuSections, type ContextMenuAction, type ContextMenuTarget } from "./contextMenu";
 import FileTypeIcon from "./FileTypeIcon";
 import WindowControls from "./WindowControls";
 import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type DocumentKind, type RecentItem } from "./recent";
+import { fontScaleOptions, interfaceScaleOptions, normalizeSegmentedPreferences, readingWidthOptions, sidebarOpacityOptions, stepValue, type SegmentOption, type SegmentValue } from "./settings";
 import { createNote, emptySession, noteTitle, sortNotes, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
 import {
   AArrowDown,
@@ -17,6 +23,8 @@ import {
   ChevronRight,
   ChevronUp,
   Code2,
+  Copy,
+  ExternalLink,
   FileCode2,
   FileOutput,
   FileText,
@@ -31,13 +39,18 @@ import {
   PinOff,
   Plus,
   RefreshCw,
+  Redo2,
   RotateCcw,
   Save,
   Scan,
+  Scissors,
+  Search,
   Settings,
   StickyNote,
   Sun,
+  TextSelect,
   Trash2,
+  Undo2,
   WrapText,
   X,
   ZoomIn,
@@ -65,7 +78,18 @@ type OpenDocument = {
 
 type Theme = "light" | "dark" | "system";
 type ResolvedTheme = Exclude<Theme, "system">;
-type ContextMenuState = { x: number; y?: number; bottom?: number; maxHeight: number; path?: string; noteId?: string; root?: boolean };
+type ContextMenuState = {
+  x: number;
+  y?: number;
+  bottom?: number;
+  maxHeight: number;
+  target: ContextMenuTarget;
+  path?: string;
+  noteId?: string;
+  selectedText?: string;
+  toggleFolder?: () => void;
+};
+type ContextMenuRequest = Pick<ContextMenuState, "target" | "path" | "noteId" | "selectedText" | "toggleFolder">;
 /* Replaces window.confirm, which rendered as OS browser chrome in WebView2
    and blocked the event loop. resolve is settled exactly once, by whichever
    of confirm, cancel, backdrop click or Escape happens first. */
@@ -94,11 +118,11 @@ const appWindow = isTauri() ? getCurrentWindow() : undefined;
 const allowedExtensions = ["md", "markdown", "html", "htm", "txt"];
 const defaultPreferences: Preferences = {
   theme: "system",
-  interfaceScale: 92,
+  interfaceScale: 100,
   viewerZoom: 100,
-  sidebarOpacity: 84,
+  sidebarOpacity: 92,
   readingWidth: 880,
-  fontScale: 95,
+  fontScale: 100,
   lineHeight: 170,
   editorWrap: true,
   editorFontSize: 14,
@@ -107,6 +131,16 @@ const defaultPreferences: Preferences = {
   sidebarMotion: "balanced",
 };
 const sidebarMotionMs: Record<SidebarMotion, number> = { quick: 560, balanced: 700, relaxed: 900 };
+const appearanceOptions = [
+  { label: "Light", value: "light" },
+  { label: "System", value: "system" },
+  { label: "Dark", value: "dark" },
+] as const;
+const sidebarMotionOptions = [
+  { label: "Slow", value: "relaxed" },
+  { label: "Balanced", value: "balanced" },
+  { label: "Fast", value: "quick" },
+] as const;
 const editorFonts: Record<EditorFont, string> = {
   "Caskaydia Code NF": '"CaskaydiaCove NF", "CaskaydiaCove Nerd Font", "Cascadia Mono", monospace',
   "JetBrains Mono NF": '"JetBrainsMono NF", "JetBrainsMono Nerd Font", "Cascadia Mono", monospace',
@@ -114,6 +148,7 @@ const editorFonts: Record<EditorFont, string> = {
   "Zed Mono NF": '"ZedMono NF", "ZedMono Nerd Font", "Cascadia Mono", monospace',
 };
 const editorFontNames = Object.keys(editorFonts) as EditorFont[];
+const maxViewerSelectionChars = 1_000_000;
 const editorFontAliases: Record<string, EditorFont> = {
   "Caskaydia Code NF": "Caskaydia Code NF",
   "JetBrains Mono NF": "JetBrains Mono NF",
@@ -127,7 +162,7 @@ const editorFontAliases: Record<string, EditorFont> = {
 
 function readPreferences(): Preferences {
   const stored = readStored<Partial<Omit<Preferences, "editorFont">> & { editorFont?: string }>("vellum.preferences:v2", readStored("vellum.preferences:v1", {}));
-  return { ...defaultPreferences, ...stored, editorFont: editorFontAliases[stored.editorFont ?? ""] ?? defaultPreferences.editorFont };
+  return normalizeSegmentedPreferences({ ...defaultPreferences, ...stored, editorFont: editorFontAliases[stored.editorFont ?? ""] ?? defaultPreferences.editorFont });
 }
 
 function basename(path: string) {
@@ -184,7 +219,7 @@ function filterEntryForWorkspace(entry: Entry, workspace: Workspace): Entry | un
   }) };
 }
 
-const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i"),warn=()=>parent.postMessage({type:"vellum-viewer-warning"},"*");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("error",warn,true);addEventListener("unhandledrejection",warn);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY},"*")});addEventListener("pointerdown",()=>parent.postMessage({type:"vellum-viewer-pointerdown"},"*"),true)})()`;
+const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i"),warn=()=>parent.postMessage({type:"vellum-viewer-warning"},"*");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("error",warn,true);addEventListener("unhandledrejection",warn);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY,selectedText:String(getSelection()?.toString()||"")},"*")});addEventListener("keydown",event=>{if(event.key==="Escape")parent.postMessage({type:"vellum-viewer-escape"},"*")},true);addEventListener("pointerdown",()=>parent.postMessage({type:"vellum-viewer-pointerdown"},"*"),true)})()`;
 
 function prepareHtml(content: string, theme: ResolvedTheme, baseUrl?: string) {
   const thumb = theme === "dark" ? "oklch(1 0 0 / .24)" : "oklch(0 0 0 / .28)";
@@ -206,7 +241,13 @@ function TreeNode({ entry, activePath, root = false, pinnedPaths, onOpen, onPin,
   onOpen: (path: string) => void;
   onPin?: (path: string) => void;
   onRemove?: (path: string) => void;
-  onContextMenu: (event: ReactMouseEvent, path: string, root: boolean) => void;
+  onContextMenu: (event: ReactMouseEvent, target: {
+    path: string;
+    entryKind: Entry["kind"];
+    root: boolean;
+    expanded: boolean;
+    toggleFolder?: () => void;
+  }) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const isDirectory = entry.kind === "directory";
@@ -215,7 +256,13 @@ function TreeNode({ entry, activePath, root = false, pinnedPaths, onOpen, onPin,
 
   return (
     <div className={`tree-node ${root ? "tree-root" : ""}`}>
-      <div className={`tree-row-wrap ${root ? "root-row" : onPin ? "pinnable-row" : ""} ${activePath === entry.path ? "active" : ""}`} onContextMenu={(event) => onContextMenu(event, entry.path, root)}>
+      <div className={`tree-row-wrap ${root ? "root-row" : onPin ? "pinnable-row" : ""} ${activePath === entry.path ? "active" : ""}`} onContextMenu={(event) => onContextMenu(event, {
+        path: entry.path,
+        entryKind: entry.kind,
+        root,
+        expanded,
+        toggleFolder: isDirectory ? () => setExpanded((value) => !value) : undefined,
+      })}>
         <button
           type="button"
           className="tree-row"
@@ -239,6 +286,61 @@ function TreeNode({ entry, activePath, root = false, pinnedPaths, onOpen, onPin,
           {entry.children.map((child) => <TreeNode key={child.path} entry={child} activePath={activePath} pinnedPaths={pinnedPaths} onOpen={onOpen} onPin={onPin} onContextMenu={onContextMenu} />)}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function SegmentedControl<T extends SegmentValue>({ label, value, options, onChange }: {
+  label: string;
+  value: T;
+  options: readonly SegmentOption<T>[];
+  onChange: (value: T) => void;
+}) {
+  const moveSelection = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index - 1 + options.length) % options.length;
+    else if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % options.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = options.length - 1;
+    else return;
+    event.preventDefault();
+    onChange(options[next].value);
+    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();
+  };
+
+  return (
+    <div
+      className="segmented-control"
+      role="radiogroup"
+      aria-label={label}
+      style={{
+        "--segment-count": options.length,
+        "--segment-offset": `${Math.max(0, options.findIndex((option) => option.value === value)) * 100}%`,
+      } as CSSProperties}
+    >
+      <span className="segmented-thumb" aria-hidden="true" />
+      {options.map((option, index) => {
+        const selected = option.value === value;
+        return <button key={String(option.value)} type="button" role="radio" aria-checked={selected} tabIndex={selected ? 0 : -1} className={selected ? "selected" : ""} onClick={() => onChange(option.value)} onKeyDown={(event) => moveSelection(event, index)}>{option.label}</button>;
+      })}
+    </div>
+  );
+}
+
+function NumericStepper({ label, value, min, max, step, suffix, onChange }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  suffix: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="numeric-stepper" role="group" aria-label={label}>
+      <button type="button" aria-label={`Decrease ${label}`} disabled={value <= min} onClick={() => onChange(stepValue(value, -step, min, max))}>−</button>
+      <output aria-label={`${label}: ${value}${suffix}`} aria-live="polite">{value}{suffix}</output>
+      <button type="button" aria-label={`Increase ${label}`} disabled={value >= max} onClick={() => onChange(stepValue(value, step, min, max))}>+</button>
     </div>
   );
 }
@@ -273,6 +375,9 @@ function App() {
   const [viewerWarning, setViewerWarning] = useState(false);
   const settingsDialog = useRef<HTMLDialogElement>(null);
   const htmlFrame = useRef<HTMLIFrameElement>(null);
+  const editorView = useRef<EditorView | null>(null);
+  const contextMenuElement = useRef<HTMLDivElement>(null);
+  const contextMenuReturnFocus = useRef<HTMLElement | null>(null);
   const contextMenuScroll = useRef<HTMLDivElement>(null);
   const libraryRestored = useRef(false);
   const documentRestored = useRef(false);
@@ -283,6 +388,7 @@ function App() {
   const sessionRef = useRef(session);
   const openRequest = useRef(0);
   const rootsRef = useRef<Entry[]>([]);
+  const activeDocumentRef = useRef<OpenDocument | undefined>(undefined);
 
   const activePath = activeDocument?.draft ? undefined : activeDocument?.path;
   const activeNote = activeNoteId ? session.notes.find((note) => note.id === activeNoteId) : undefined;
@@ -296,6 +402,7 @@ function App() {
 
   useEffect(() => { rootsRef.current = roots; }, [roots]);
   useEffect(() => { sessionRef.current = session; }, [session]);
+  useEffect(() => { activeDocumentRef.current = activeDocument; }, [activeDocument]);
 
   const updateSession = useCallback((update: (current: SessionState) => SessionState) => {
     setSession((current) => {
@@ -308,6 +415,7 @@ function App() {
   useEffect(() => {
     const menu = contextMenuScroll.current;
     setContextMenuScrollHint(menu && menu.scrollHeight > menu.clientHeight + 1 ? "down" : undefined);
+    if (contextMenu) requestAnimationFrame(() => contextMenuElement.current?.querySelector<HTMLButtonElement>("button")?.focus());
   }, [contextMenu]);
 
   const touchRecent = useCallback((path: string) => {
@@ -808,16 +916,30 @@ function App() {
         closeMenu();
         return;
       }
+      if (event.data?.type === "vellum-viewer-escape") {
+        dismissContextMenu();
+        return;
+      }
       if (event.data?.type !== "vellum-context-menu") return;
       const rect = htmlFrame.current.getBoundingClientRect();
       const x = Number(event.data.x);
       const y = Number(event.data.y);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const selectedText = event.data.selectedText;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || typeof selectedText !== "string" || selectedText.length > maxViewerSelectionChars) return;
+      const document = activeDocumentRef.current;
+      if (!document) return;
       const menuY = Math.max(8, rect.top + y);
+      contextMenuReturnFocus.current = htmlFrame.current;
+      // ponytail: a scripted document can forge this message and its text.
+      // Copy remains user-triggered; add a private channel only if spoofing
+      // becomes a demonstrated clipboard-poisoning problem.
       setContextMenu({
         x: Math.max(8, Math.min(rect.left + x, window.innerWidth - 224)),
         ...(menuY > window.innerHeight / 2 ? { bottom: 8 } : { y: menuY }),
         maxHeight: menuY > window.innerHeight / 2 ? window.innerHeight - 16 : window.innerHeight - menuY - 8,
+        target: { kind: "viewer", saved: !document.draft, selection: Boolean(selectedText) },
+        path: document.draft ? undefined : document.path,
+        selectedText,
       });
     };
     window.addEventListener("pointerdown", closeMenu);
@@ -840,7 +962,7 @@ function App() {
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     const modifier = event.metaKey || event.ctrlKey;
-    if (event.key === "Escape" && contextMenu) { setContextMenu(undefined); return; }
+    if (event.key === "Escape" && contextMenu) { dismissContextMenu(); return; }
     if (event.key === "Escape" && addMenuOpen) { setAddMenuOpen(false); return; }
     if (event.key === "Escape" && settingsOpen) { setSettingsOpen(false); return; }
     if (!modifier) return;
@@ -942,25 +1064,70 @@ function App() {
     htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-measure" }, "*");
   }
 
-  function showContextMenu(event: ReactMouseEvent, path?: string, root = false, noteId?: string) {
+  function dismissContextMenu(restoreFocus = true) {
+    setContextMenu(undefined);
+    if (restoreFocus) requestAnimationFrame(() => contextMenuReturnFocus.current?.focus());
+  }
+
+  function showContextMenu(event: ReactMouseEvent, request?: ContextMenuRequest) {
     event.preventDefault();
     event.stopPropagation();
     setAddMenuOpen(false);
-    const menuY = Math.max(8, event.clientY);
+    const element = event.target instanceof Element ? event.target : undefined;
+    const rect = element?.getBoundingClientRect();
+    const menuX = event.clientX || rect?.left || 8;
+    const menuY = Math.max(8, event.clientY || rect?.bottom || 8);
+    let next = request;
+    if (!next && element?.closest(".source-editor") && editorView.current) {
+      const view = editorView.current;
+      next = {
+        target: {
+          kind: "editor",
+          documentKind: activeNote ? undefined : activeDocument?.kind,
+          saved: Boolean(activeDocument && !activeDocument.draft),
+          dirty,
+          selection: view.state.selection.ranges.some((range) => !range.empty),
+          canUndo: undoDepth(view.state) > 0,
+          canRedo: redoDepth(view.state) > 0,
+        },
+        path: activeDocument?.draft ? undefined : activeDocument?.path,
+      };
+    } else if (!next && element?.closest(".document") && activeDocument) {
+      const selectedText = window.getSelection()?.toString() ?? "";
+      const copyableText = selectedText.length <= maxViewerSelectionChars ? selectedText : undefined;
+      next = {
+        target: { kind: "viewer", saved: !activeDocument.draft, selection: Boolean(copyableText) },
+        path: activeDocument.draft ? undefined : activeDocument.path,
+        selectedText: copyableText,
+      };
+    }
+    contextMenuReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setContextMenu({
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 224)),
+      x: Math.max(8, Math.min(menuX, window.innerWidth - 224)),
       ...(menuY > window.innerHeight / 2 ? { bottom: 8 } : { y: menuY }),
       maxHeight: menuY > window.innerHeight / 2 ? window.innerHeight - 16 : window.innerHeight - menuY - 8,
-      path,
-      noteId,
-      root,
+      ...(next ?? { target: { kind: "empty" } }),
+    });
+  }
+
+  function showTreeContextMenu(event: ReactMouseEvent, item: {
+    path: string;
+    entryKind: Entry["kind"];
+    root: boolean;
+    expanded: boolean;
+    toggleFolder?: () => void;
+  }) {
+    showContextMenu(event, {
+      target: { kind: "sidebar-entry", entryKind: item.entryKind, root: item.root, expanded: item.expanded },
+      path: item.path,
+      toggleFolder: item.toggleFolder,
     });
   }
 
   function renderNoteRow(note: Note) {
     const notePinned = pinnedNotes.includes(note.id);
     return (
-      <div key={note.id} className={`tree-row-wrap note-row ${activeNoteId === note.id ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, undefined, false, note.id)}>
+      <div key={note.id} className={`tree-row-wrap note-row ${activeNoteId === note.id ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, { target: { kind: "sidebar-note" }, noteId: note.id })}>
         <button type="button" className="tree-row" onClick={() => openNote(note.id)} title={noteTitle(note)}>
           <span className="tree-chevron" />
           <FileTypeIcon kind="text" size={13} />
@@ -977,7 +1144,10 @@ function App() {
     const name = item.name ?? basename(item.path);
     const itemPinned = pinned.includes(item.path);
     return (
-      <div key={item.path} className={`tree-row-wrap pinnable-row ${activeDocument?.path === item.path ? "active" : ""}`}>
+      <div key={item.path} className={`tree-row-wrap pinnable-row ${activeDocument?.path === item.path ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, {
+        target: { kind: "sidebar-progress", saved: !item.draft },
+        path: item.path,
+      })}>
         <button type="button" className="tree-row" onClick={() => item.draft ? openDraft(item.path) : void openDocument(item.path)} title={name}>
           <span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} /><span className="tree-label">{sidebarLabel(name, true)}</span>
         </button>
@@ -986,6 +1156,201 @@ function App() {
       </div>
     );
   }
+
+  function contextActionLabel(action: ContextMenuAction) {
+    switch (action) {
+      case "open-file": return "Open file";
+      case "open-folder": return "Open folder";
+      case "new-note": return "New Note";
+      case "new-markdown": return "New Markdown";
+      case "new-html": return "New HTML";
+      case "new-text": return "New Text File";
+      case "open-target":
+      case "open-note": return "Open";
+      case "toggle-folder": return contextMenu?.target.kind === "sidebar-entry" && contextMenu.target.expanded ? "Collapse" : "Expand";
+      case "reveal-target": return "Open in Explorer";
+      case "toggle-pin": return contextMenu?.path && pinned.includes(contextMenu.path) ? "Unpin" : "Pin";
+      case "remove-sidebar": return "Remove from sidebar";
+      case "toggle-note-pin": return contextMenu?.noteId && pinnedNotes.includes(contextMenu.noteId) ? "Unpin note" : "Pin note";
+      case "delete-note": return "Delete note";
+      case "undo": return "Undo";
+      case "redo": return "Redo";
+      case "cut": return "Cut";
+      case "copy-editor":
+      case "copy-viewer": return "Copy";
+      case "select-all": return "Select All";
+      case "find": return "Find";
+      case "save": return "Save";
+      case "save-as": return "Save As";
+      case "view-document": return "View document";
+      case "reload": return "Reload";
+      case "edit-source": return "Edit source";
+      case "close": return activeNote ? "Close note" : "Close";
+      case "toggle-sidebar": return sidebarOpen ? "Collapse sidebar" : "Expand sidebar";
+      case "toggle-theme": return "Switch theme";
+      case "settings": return "Settings";
+    }
+  }
+
+  function contextActionIcon(action: ContextMenuAction) {
+    switch (action) {
+      case "open-file": return <Plus size={14} />;
+      case "open-folder": return <FolderPlus size={14} />;
+      case "new-note": return <StickyNote size={14} />;
+      case "new-markdown": return <FileTypeIcon kind="markdown" size={14} />;
+      case "new-html": return <FileTypeIcon kind="html" size={14} />;
+      case "new-text": return <FileTypeIcon kind="text" size={14} />;
+      case "open-target": return contextMenu?.path && isSupported(contextMenu.path) ? documentIcon(contextMenu.path, 14) : <FolderOpen size={14} />;
+      case "toggle-folder": return contextMenu?.target.kind === "sidebar-entry" && contextMenu.target.expanded ? <FolderOpen size={14} /> : <Folder size={14} />;
+      case "reveal-target": return <ExternalLink size={14} />;
+      case "toggle-pin": return contextMenu?.path && pinned.includes(contextMenu.path) ? <PinOff size={14} /> : <Pin size={14} />;
+      case "remove-sidebar": return <X size={14} />;
+      case "open-note": return <StickyNote size={14} />;
+      case "toggle-note-pin": return contextMenu?.noteId && pinnedNotes.includes(contextMenu.noteId) ? <PinOff size={14} /> : <Pin size={14} />;
+      case "delete-note": return <Trash2 size={14} />;
+      case "undo": return <Undo2 size={14} />;
+      case "redo": return <Redo2 size={14} />;
+      case "cut": return <Scissors size={14} />;
+      case "copy-editor":
+      case "copy-viewer": return <Copy size={14} />;
+      case "select-all": return <TextSelect size={14} />;
+      case "find": return <Search size={14} />;
+      case "save": return <Save size={14} />;
+      case "save-as": return <FileOutput size={14} />;
+      case "view-document": return <FileText size={14} />;
+      case "reload": return <RefreshCw size={14} />;
+      case "edit-source": return <FileCode2 size={14} />;
+      case "close": return <X size={14} />;
+      case "toggle-sidebar": return sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />;
+      case "toggle-theme": return resolvedTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />;
+      case "settings": return <Settings size={14} />;
+    }
+  }
+
+  function contextActionShortcut(action: ContextMenuAction) {
+    switch (action) {
+      case "open-file": return "Ctrl O";
+      case "open-folder": return "Ctrl Shift O";
+      case "new-note": return "Ctrl N";
+      case "undo": return "Ctrl Z";
+      case "redo": return "Ctrl Y";
+      case "cut": return "Ctrl X";
+      case "copy-editor":
+      case "copy-viewer": return "Ctrl C";
+      case "select-all": return "Ctrl A";
+      case "find": return "Ctrl F";
+      case "save": return "Ctrl S";
+      case "save-as": return "Ctrl Shift S";
+      case "view-document":
+      case "edit-source": return "Ctrl E";
+      case "reload": return "Ctrl R";
+      case "close": return "Ctrl W";
+      case "toggle-sidebar": return "Ctrl B";
+      case "settings": return "Ctrl ,";
+      default: return undefined;
+    }
+  }
+
+  async function copyViewerText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.append(textarea);
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.remove();
+      focused?.focus();
+      if (!copied) setError("Vellum could not copy the selected text.");
+    }
+  }
+
+  function runEditorAction(action: ContextMenuAction) {
+    const view = editorView.current;
+    if (!view) return;
+    dismissContextMenu(false);
+    view.focus();
+    if (action === "undo") undo(view);
+    else if (action === "redo") redo(view);
+    else if (action === "select-all") selectAll(view);
+    else if (action === "find") openSearchPanel(view);
+    else if (action === "cut" || action === "copy-editor") {
+      // ponytail: WebView2 blocks programmatic paste. Add
+      // tauri-plugin-clipboard-manager only if Paste becomes required.
+      document.execCommand(action === "cut" ? "cut" : "copy");
+    }
+  }
+
+  async function runContextAction(action: ContextMenuAction) {
+    const menu = contextMenu;
+    if (!menu) return;
+    if (["undo", "redo", "cut", "copy-editor", "select-all", "find"].includes(action)) {
+      runEditorAction(action);
+      return;
+    }
+    const path = menu.path;
+    const noteId = menu.noteId;
+    const selectedText = menu.selectedText;
+    dismissContextMenu();
+    switch (action) {
+      case "open-file": await choosePath(); break;
+      case "open-folder": await chooseFolder(); break;
+      case "new-note": newNote(); break;
+      case "new-markdown": newDocument("markdown"); break;
+      case "new-html": newDocument("html"); break;
+      case "new-text": newDocument("text"); break;
+      case "open-target":
+        if (!path) break;
+        if (menu.target.kind === "sidebar-progress" && !menu.target.saved) openDraft(path);
+        else await openDocument(path);
+        break;
+      case "toggle-folder": menu.toggleFolder?.(); break;
+      case "reveal-target":
+        if (path) await revealItemInDir(path).catch((cause) => setError(String(cause)));
+        break;
+      case "toggle-pin": if (path) togglePin(path); break;
+      case "remove-sidebar": if (path) removeSidebarItem(path); break;
+      case "open-note": if (noteId) openNote(noteId); break;
+      case "toggle-note-pin": if (noteId) toggleNotePin(noteId); break;
+      case "delete-note": if (noteId) await deleteNote(noteId); break;
+      case "save": await saveCurrent(false); break;
+      case "save-as": await saveCurrent(true); break;
+      case "view-document": setEditMode(false); break;
+      case "copy-viewer": if (selectedText) await copyViewerText(selectedText); break;
+      case "reload": await reloadDocument(); break;
+      case "edit-source": setEditMode(true); break;
+      case "close": closeDocument(); break;
+      case "toggle-sidebar": setSidebarOpen((value) => !value); break;
+      case "toggle-theme": toggleTheme(); break;
+      case "settings": setSettingsOpen(true); break;
+      default: break;
+    }
+  }
+
+  function handleContextMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      dismissContextMenu();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    if (!buttons.length) return;
+    event.preventDefault();
+    const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === "Home" ? 0
+      : event.key === "End" ? buttons.length - 1
+        : event.key === "ArrowDown" ? (current + 1) % buttons.length
+          : (current <= 0 ? buttons.length : current) - 1;
+    buttons[next]?.focus();
+  }
+
+  const resolvedContextMenu = contextMenu ? contextMenuSections(contextMenu.target) : [];
 
   return (
     <main className={`app-shell ${htmlMode ? "html-mode" : ""} ${sidebarOpen ? "" : "sidebar-collapsed"} ${preferences.autoHideControls ? "" : "controls-always-visible"}`} onContextMenu={showContextMenu}>
@@ -1011,7 +1376,7 @@ function App() {
             {!collapsedSections.pinned ? <div className="tree">
               {workspace === "notes" ? pinnedInternalNotes.map(renderNoteRow) : null}
               {pinnedProgressItems.map(renderProgressRow)}
-              {pinnedEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
+              {pinnedEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} />)}
               {!pinnedEntries.length && !pinnedProgressItems.length && (workspace !== "notes" || !pinnedInternalNotes.length) ? <div className="section-empty">Empty</div> : null}
             </div> : null}
           </section>
@@ -1026,7 +1391,7 @@ function App() {
           <section className={`sidebar-section recent-section ${collapsedSections.recent ? "collapsed" : ""}`}>
             <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.recent} onClick={() => toggleSection("recent")}>{collapsedSections.recent ? <ChevronRight size={11} /> : <ChevronDown size={11} />}Recent</button>
             {!collapsedSections.recent ? <div className="tree">
-              {displayedRecentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showContextMenu} />)}
+              {displayedRecentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} />)}
               {hiddenRecentCount > 0 ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(true)} aria-expanded="false">More ({hiddenRecentCount})</button> : null}
               {recentExpanded && recentEntries.length > collapsedRecentCount ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(false)} aria-expanded="true">Show less</button> : null}
               {!recentEntries.length ? <div className="section-empty">Empty</div> : null}
@@ -1049,7 +1414,7 @@ function App() {
             {!hasActiveItem ? (
               <div className="welcome"><div className="welcome-content"><h1>Vellum</h1><p>A quiet place to read, edit, and organize documents and notes.</p><div className="welcome-actions"><button type="button" onClick={choosePath}>Open a file</button><button type="button" className="secondary" onClick={newNote}>New note</button></div><div className="welcome-shortcuts"><span><kbd>Ctrl O</kbd> Open file</span><span><kbd>Ctrl N</kbd> New note</span></div></div></div>
             ) : activeNote || activeDocument?.kind === "text" || editMode ? (
-              <div className="editor-shell"><Suspense fallback={<div className="welcome"><p>Loading editor…</p></div>}><SourceEditor key={editorKey} value={draftContent} language={editorLanguage!} wrap={preferences.editorWrap} fontSize={preferences.editorFontSize} fontFamily={editorFonts[preferences.editorFont]} onChange={changeDraft} /></Suspense></div>
+              <div className="editor-shell"><Suspense fallback={<div className="welcome"><p>Loading editor…</p></div>}><SourceEditor key={editorKey} value={draftContent} language={editorLanguage!} wrap={preferences.editorWrap} fontSize={preferences.editorFontSize} fontFamily={editorFonts[preferences.editorFont]} onChange={changeDraft} onViewChange={(view) => { editorView.current = view; }} /></Suspense></div>
             ) : activeDocument?.kind === "markdown" ? (
               <article key={activeDocument.path} className="document markdown-body" dangerouslySetInnerHTML={{ __html: renderedMarkdown }} />
             ) : activeDocument ? (
@@ -1118,50 +1483,64 @@ function App() {
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("text"); }}><FileTypeIcon kind="text" size={15} /><span><strong>New Text File</strong><small>Create an empty .txt document</small></span></button>
       </div> : null}
 
-      {contextMenu ? <div className="context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y, bottom: contextMenu.bottom, maxHeight: contextMenu.maxHeight }} onPointerDown={(event) => event.stopPropagation()}><div ref={contextMenuScroll} className="context-menu-scroll" style={{ maxHeight: Math.max(0, contextMenu.maxHeight - 2) }} onScroll={(event) => { const menu = event.currentTarget; setContextMenuScrollHint(menu.scrollHeight <= menu.clientHeight + 1 ? undefined : menu.scrollTop + menu.clientHeight >= menu.scrollHeight - 1 ? "up" : "down"); }}>
-        <div className="context-menu-label">Open</div>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void choosePath(); }}><Plus size={14} />Open file<span>Ctrl O</span></button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void chooseFolder(); }}><FolderPlus size={14} />Open folder<span>Ctrl Shift O</span></button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newNote(); }}><StickyNote size={14} />New Note<span>Ctrl N</span></button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("markdown"); }}><FileTypeIcon kind="markdown" size={14} />New Markdown</button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("html"); }}><FileTypeIcon kind="html" size={14} />New HTML</button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); newDocument("text"); }}><FileTypeIcon kind="text" size={14} />New Text File</button>
-        {contextMenu.path && isSupported(contextMenu.path) ? <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); void openDocument(contextMenu.path!); }}>{documentIcon(contextMenu.path, 14)}Open selected</button> : null}
-        <div className="context-menu-separator" />
-        <div className="context-menu-label">Document</div>
-        <button type="button" role="menuitem" disabled={!activeDocument || activeDocument.draft} onClick={() => { setContextMenu(undefined); void reloadDocument(); }}><RefreshCw size={14} />Reload<span>Ctrl R</span></button>
-        <button type="button" role="menuitem" disabled={!hasActiveItem} onClick={() => { setContextMenu(undefined); void saveCurrent(false); }}><Save size={14} />Save<span>Ctrl S</span></button>
-        <button type="button" role="menuitem" disabled={!activeDocument || activeDocument.kind === "text"} onClick={() => { setContextMenu(undefined); setEditMode((value) => !value); }}>{editMode ? <FileText size={14} /> : <FileCode2 size={14} />}{editMode ? "View document" : "Edit source"}<span>Ctrl E</span></button>
-        <button type="button" role="menuitem" disabled={!hasActiveItem} onClick={() => { setContextMenu(undefined); closeDocument(); }}><X size={14} />Close<span>Ctrl W</span></button>
-        <div className="context-menu-separator" />
-        <div className="context-menu-label">View</div>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSidebarOpen((value) => !value); }}>{sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}{sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}<span>Ctrl B</span></button>
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); toggleTheme(); }}>{resolvedTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />}Switch theme</button>
-        {contextMenu.path ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); togglePin(contextMenu.path!); }}>{pinned.includes(contextMenu.path) ? <PinOff size={14} /> : <Pin size={14} />}{pinned.includes(contextMenu.path) ? "Unpin" : "Pin"}</button>{contextMenu.root ? <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); removeSidebarItem(contextMenu.path!); }}><X size={14} />Remove from sidebar</button> : null}</> : null}
-        {contextMenu.noteId ? <><div className="context-menu-separator" /><button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); toggleNotePin(contextMenu.noteId!); }}>{pinnedNotes.includes(contextMenu.noteId) ? <PinOff size={14} /> : <Pin size={14} />}{pinnedNotes.includes(contextMenu.noteId) ? "Unpin note" : "Pin note"}</button><button type="button" role="menuitem" className="context-danger" onClick={() => { const id = contextMenu.noteId!; setContextMenu(undefined); void deleteNote(id); }}><Trash2 size={14} />Delete note</button></> : null}
-        <div className="context-menu-separator" />
-        <button type="button" role="menuitem" onClick={() => { setContextMenu(undefined); setSettingsOpen(true); }}><Settings size={14} />Settings<span>Ctrl ,</span></button>
+      {contextMenu ? <div
+        ref={contextMenuElement}
+        className="context-menu"
+        role="menu"
+        style={{ left: contextMenu.x, top: contextMenu.y, bottom: contextMenu.bottom, maxHeight: contextMenu.maxHeight }}
+        onContextMenu={(event) => event.preventDefault()}
+        onKeyDown={handleContextMenuKeyDown}
+        onPointerDown={(event) => event.stopPropagation()}
+      ><div ref={contextMenuScroll} className="context-menu-scroll" style={{ maxHeight: Math.max(0, contextMenu.maxHeight - 2) }} onScroll={(event) => { const menu = event.currentTarget; setContextMenuScrollHint(menu.scrollHeight <= menu.clientHeight + 1 ? undefined : menu.scrollTop + menu.clientHeight >= menu.scrollHeight - 1 ? "up" : "down"); }}>
+        {resolvedContextMenu.map((section, sectionIndex) => <div key={`${section.label ?? "actions"}-${sectionIndex}`}>
+          {sectionIndex ? <div className="context-menu-separator" /> : null}
+          {section.label ? <div className="context-menu-label">{section.label}</div> : null}
+          {section.actions.map((action) => <button
+            key={action}
+            type="button"
+            role="menuitem"
+            className={action === "delete-note" ? "context-danger" : undefined}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void runContextAction(action)}
+          >{contextActionIcon(action)}{contextActionLabel(action)}{contextActionShortcut(action) ? <span>{contextActionShortcut(action)}</span> : null}</button>)}
+        </div>)}
       </div>{contextMenuScrollHint ? <div className="context-menu-more" aria-hidden="true">{contextMenuScrollHint === "up" ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</div> : null}</div> : null}
 
       <dialog ref={settingsDialog} className="modal-backdrop" aria-labelledby="settings-title" onCancel={() => setSettingsOpen(false)} onClose={() => setSettingsOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
         <section className="settings-panel">
-          <header><h2 id="settings-title">Settings</h2><button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={17} /></button></header>
-          <h3 className="settings-group-label">Interface</h3>
-          <div className="setting-row"><div><strong>Appearance</strong><span>Choose how the application chrome is rendered.</span></div><select aria-label="Appearance" value={preferences.theme} onChange={(event) => setPreferences((current) => ({ ...current, theme: event.target.value as Theme }))}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
-          <div className="setting-row range-row"><div><strong>Interface scale</strong><span>Zoom the entire application without changing the window.</span></div><label><input aria-label="Interface scale" type="range" min="80" max="110" step="5" value={preferences.interfaceScale} onChange={(event) => setPreferences((current) => ({ ...current, interfaceScale: Number(event.target.value) }))} /><span>{preferences.interfaceScale}%</span></label></div>
-          <div className="setting-row range-row"><div><strong>Sidebar transparency</strong><span>Adjust the translucency of the saved workspace.</span></div><label><input aria-label="Sidebar transparency" type="range" min="65" max="100" value={preferences.sidebarOpacity} onChange={(event) => setPreferences((current) => ({ ...current, sidebarOpacity: Number(event.target.value) }))} /><span>{preferences.sidebarOpacity}%</span></label></div>
-          <div className="setting-row"><div><strong>Sidebar motion</strong><span>Choose how quickly the sidebar collapses and expands.</span></div><select aria-label="Sidebar motion" value={preferences.sidebarMotion} onChange={(event) => setPreferences((current) => ({ ...current, sidebarMotion: event.target.value as SidebarMotion }))}><option value="quick">Quick</option><option value="balanced">Balanced</option><option value="relaxed">Relaxed</option></select></div>
-          <div className="setting-row"><div><strong>Auto-hide controls</strong><span>Fade the document controls until the pointer approaches.</span></div><label className="switch"><input aria-label="Auto-hide document controls" type="checkbox" checked={preferences.autoHideControls} onChange={(event) => setPreferences((current) => ({ ...current, autoHideControls: event.target.checked }))} /><span aria-hidden="true" /></label></div>
-          <h3 className="settings-group-label">Reading</h3>
-          <div className="setting-row range-row"><div><strong>Viewer zoom</strong><span>Set the default zoom for Markdown and HTML documents.</span></div><label><input aria-label="Viewer zoom" type="range" min="50" max="200" step="10" value={preferences.viewerZoom} onChange={(event) => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Number(event.target.value) })); }} /><span>{preferences.viewerZoom}%</span></label></div>
-          <div className="setting-row range-row"><div><strong>Reading width</strong><span>Set the maximum width of rendered Markdown.</span></div><label><input aria-label="Markdown reading width" type="range" min="680" max="1180" step="20" value={preferences.readingWidth} onChange={(event) => setPreferences((current) => ({ ...current, readingWidth: Number(event.target.value) }))} /><span>{preferences.readingWidth}px</span></label></div>
-          <div className="setting-row range-row"><div><strong>Text scale</strong><span>Scale rendered document typography.</span></div><label><input aria-label="Markdown text scale" type="range" min="85" max="125" step="5" value={preferences.fontScale} onChange={(event) => setPreferences((current) => ({ ...current, fontScale: Number(event.target.value) }))} /><span>{preferences.fontScale}%</span></label></div>
-          <div className="setting-row range-row"><div><strong>Line spacing</strong><span>Adjust the rhythm of rendered Markdown paragraphs.</span></div><label><input aria-label="Markdown line spacing" type="range" min="145" max="195" step="5" value={preferences.lineHeight} onChange={(event) => setPreferences((current) => ({ ...current, lineHeight: Number(event.target.value) }))} /><span>{preferences.lineHeight}%</span></label></div>
-          <h3 className="settings-group-label">Editor</h3>
-          <div className="setting-row"><div><strong>Word wrap</strong><span>Wrap long lines in every editor mode.</span></div><label className="switch"><input aria-label="Editor word wrap" type="checkbox" checked={preferences.editorWrap} onChange={(event) => setPreferences((current) => ({ ...current, editorWrap: event.target.checked }))} /><span aria-hidden="true" /></label></div>
-          <div className="setting-row"><div><strong>Editor font</strong><span>Use an installed editor font with safe system fallbacks.</span></div><select aria-label="Editor font" value={preferences.editorFont} onChange={(event) => setPreferences((current) => ({ ...current, editorFont: event.target.value as EditorFont }))}>{editorFontNames.map((font) => <option key={font} style={{ fontFamily: editorFonts[font] }}>{font}</option>)}</select></div>
-          <div className="setting-row range-row"><div><strong>Editor text size</strong><span>Adjust source text without changing rendered documents.</span></div><label><input aria-label="Editor text size" type="range" min="11" max="22" value={preferences.editorFontSize} onChange={(event) => setPreferences((current) => ({ ...current, editorFontSize: Number(event.target.value) }))} /><span>{preferences.editorFontSize}px</span></label></div>
-          <div className="setting-row"><div><strong>Reset appearance</strong><span>Restore Vellum's default scale, reading, editor, and theme settings.</span></div><button type="button" className="reset-button" onClick={() => setPreferences(defaultPreferences)}><RefreshCw size={14} /> Reset</button></div>
+          <div className="settings-scroll">
+            <header><h2 id="settings-title">Settings</h2><button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={17} /></button></header>
+            <h3 className="settings-group-label">Interface</h3>
+            <div className="setting-row"><div><strong>Appearance</strong><span>Choose how the application chrome is rendered.</span></div><SegmentedControl label="Appearance" value={preferences.theme} options={appearanceOptions} onChange={(theme) => setPreferences((current) => ({ ...current, theme }))} /></div>
+            <div className="setting-row"><div><strong>Interface scale</strong><span>Zoom the entire application without changing the window.</span></div><SegmentedControl label="Interface scale" value={preferences.interfaceScale} options={interfaceScaleOptions} onChange={(interfaceScale) => setPreferences((current) => ({ ...current, interfaceScale }))} /></div>
+            <div className="setting-row"><div><strong>Sidebar transparency</strong><span>Adjust the translucency of the saved workspace.</span></div><SegmentedControl label="Sidebar transparency" value={preferences.sidebarOpacity} options={sidebarOpacityOptions} onChange={(sidebarOpacity) => setPreferences((current) => ({ ...current, sidebarOpacity }))} /></div>
+            <div className="setting-row"><div><strong>Sidebar motion</strong><span>Choose how quickly the sidebar collapses and expands.</span></div><SegmentedControl label="Sidebar motion" value={preferences.sidebarMotion} options={sidebarMotionOptions} onChange={(sidebarMotion) => setPreferences((current) => ({ ...current, sidebarMotion }))} /></div>
+            <div className="setting-row"><div><strong>Auto-hide controls</strong><span>Fade the document controls until the pointer approaches.</span></div><label className="switch"><input aria-label="Auto-hide document controls" type="checkbox" checked={preferences.autoHideControls} onChange={(event) => setPreferences((current) => ({ ...current, autoHideControls: event.target.checked }))} /><span aria-hidden="true" /></label></div>
+            <h3 className="settings-group-label">Reading</h3>
+            <div className="setting-row"><div><strong>Viewer zoom</strong><span>Set the default zoom for Markdown and HTML documents.</span></div><NumericStepper label="Viewer zoom" value={preferences.viewerZoom} min={50} max={200} step={10} suffix="%" onChange={(viewerZoom) => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom })); }} /></div>
+            <div className="setting-row"><div><strong>Reading width</strong><span>Set the maximum width of rendered Markdown.</span></div><SegmentedControl label="Markdown reading width" value={preferences.readingWidth} options={readingWidthOptions} onChange={(readingWidth) => setPreferences((current) => ({ ...current, readingWidth }))} /></div>
+            <div className="setting-row"><div><strong>Text scale</strong><span>Scale rendered document typography.</span></div><SegmentedControl label="Markdown text scale" value={preferences.fontScale} options={fontScaleOptions} onChange={(fontScale) => setPreferences((current) => ({ ...current, fontScale }))} /></div>
+            <div className="setting-row"><div><strong>Line spacing</strong><span>Adjust the rhythm of rendered Markdown paragraphs.</span></div><NumericStepper label="Markdown line spacing" value={preferences.lineHeight} min={145} max={195} step={10} suffix="%" onChange={(lineHeight) => setPreferences((current) => ({ ...current, lineHeight }))} /></div>
+            <h3 className="settings-group-label">Editor</h3>
+            <div className="setting-row"><div><strong>Word wrap</strong><span>Wrap long lines in every editor mode.</span></div><label className="switch"><input aria-label="Editor word wrap" type="checkbox" checked={preferences.editorWrap} onChange={(event) => setPreferences((current) => ({ ...current, editorWrap: event.target.checked }))} /><span aria-hidden="true" /></label></div>
+            <div className="setting-row"><div><strong>Editor font</strong><span>Use an installed editor font with safe system fallbacks.</span></div><details
+              className="font-picker settings-font-picker"
+              onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.removeAttribute("open"); }}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape" || !event.currentTarget.hasAttribute("open")) return;
+                event.stopPropagation();
+                event.currentTarget.removeAttribute("open");
+                event.currentTarget.querySelector("summary")?.focus();
+              }}
+            >
+              <summary aria-label="Editor font" style={{ fontFamily: editorFonts[preferences.editorFont] }}><span>{preferences.editorFont}</span><ChevronDown size={13} /></summary>
+              <div className="font-picker-menu" role="menu" aria-label="Editor fonts">
+                {editorFontNames.map((font) => <button key={font} type="button" role="menuitemradio" aria-checked={font === preferences.editorFont} className={font === preferences.editorFont ? "active" : ""} style={{ fontFamily: editorFonts[font] }} onClick={(event) => { setPreferences((current) => ({ ...current, editorFont: font })); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{font}</button>)}
+              </div>
+            </details></div>
+            <div className="setting-row"><div><strong>Editor text size</strong><span>Adjust source text without changing rendered documents.</span></div><NumericStepper label="Editor text size" value={preferences.editorFontSize} min={11} max={22} step={1} suffix="px" onChange={(editorFontSize) => setPreferences((current) => ({ ...current, editorFontSize }))} /></div>
+            <div className="setting-row"><div><strong>Reset all settings</strong><span>Restore every setting to Vellum's defaults.</span></div><button type="button" className="reset-button" onClick={() => setPreferences(defaultPreferences)}><RefreshCw size={14} /> Reset</button></div>
+          </div>
         </section>
       </dialog>
 

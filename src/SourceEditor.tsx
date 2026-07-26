@@ -16,6 +16,7 @@ type Props = {
   fontSize: number;
   fontFamily: string;
   onChange: (value: string) => void;
+  onViewChange?: (view: EditorView | null) => void;
 };
 
 function resolvedDarkTheme() {
@@ -349,10 +350,11 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
   ];
 }
 
-export default function SourceEditor({ value, language, wrap, fontSize, fontFamily, onChange }: Props) {
+export default function SourceEditor({ value, language, wrap, fontSize, fontFamily, onChange, onViewChange }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
+  const onViewChangeRef = useRef(onViewChange);
   const applyingExternal = useRef(false);
   const initialConfig = useRef({ value, language, wrap, fontSize, fontFamily }).current;
   const languageConfigRef = useRef<Compartment>(null);
@@ -366,6 +368,7 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
   const themeConfig = themeConfigRef.current;
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  useEffect(() => { onViewChangeRef.current = onViewChange; }, [onViewChange]);
 
   useEffect(() => {
     if (!host.current) return;
@@ -408,11 +411,13 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
     });
 
     view.current = new EditorView({ state, parent: host.current });
+    onViewChangeRef.current?.(view.current);
     view.current.focus();
 
     return () => {
       view.current?.destroy();
       view.current = null;
+      onViewChangeRef.current?.(null);
     };
   }, [initialConfig, languageConfig, themeConfig, wrapConfig]);
 
