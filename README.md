@@ -12,9 +12,9 @@
   <a href="https://github.com/giftedloser/vellum/releases/latest"><strong>Download Vellum for Windows</strong></a>
 </p>
 
-Vellum opens local Markdown, HTML, and text documents in a clean, distraction-free window. It also keeps independent scratch notes ready without requiring a filename or Save dialog.
-
 <img width="1280" height="820" alt="image" src="https://github.com/user-attachments/assets/91427ab8-06a4-4b90-9dc7-e00d64a03e9d" />
+
+Vellum opens local Markdown, HTML, and text documents in a clean, distraction-free window. It also keeps independent scratch notes ready without requiring a filename or Save dialog.
 
 
 ## Why Vellum
