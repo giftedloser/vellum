@@ -3,7 +3,6 @@ import type { DocumentKind } from "./recent";
 export type ContextMenuAction =
   | "open-file"
   | "open-folder"
-  | "new-note"
   | "new-markdown"
   | "new-html"
   | "new-text"
@@ -56,7 +55,7 @@ export type ContextMenuSection = {
 export function contextMenuSections(target: ContextMenuTarget): ContextMenuSection[] {
   if (target.kind === "empty") {
     return [
-      { label: "Open", actions: ["open-file", "open-folder", "new-note", "new-markdown", "new-html", "new-text"] },
+      { label: "Open", actions: ["open-file", "open-folder", "new-markdown", "new-html", "new-text"] },
       { label: "View", actions: ["toggle-sidebar", "toggle-theme"] },
       { actions: ["settings"] },
     ];

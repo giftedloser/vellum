@@ -34,8 +34,14 @@ export function emptySession(): SessionState {
   return { version: 1, notes: [], documents: [], active: null, workspace: "documents" };
 }
 
+export function contentTitle(content: string, fallback: string) {
+  const firstLine = content.split(/\r?\n/).find((line) => line.trim())?.trim();
+  const clipped = firstLine?.slice(0, 48).replace(/\s+\S*$/, "");
+  return firstLine && firstLine.length > 48 ? `${clipped || firstLine.slice(0, 48)}…` : firstLine || fallback;
+}
+
 export function noteTitle(note: Note) {
-  return note.content.split(/\r?\n/).find((line) => line.trim())?.trim() || note.fallbackTitle;
+  return contentTitle(note.content, note.fallbackTitle);
 }
 
 export function sortNotes(notes: Note[]) {
@@ -46,9 +52,13 @@ export function sortNotes(notes: Note[]) {
   );
 }
 
-export function createNote(notes: Note[], now = Date.now(), id = crypto.randomUUID()): Note {
-  const next = Math.max(0, ...notes.map((note) => Number(note.fallbackTitle.match(/^Untitled (\d+)$/)?.[1]) || 0)) + 1;
-  return { id, fallbackTitle: `Untitled ${next}`, content: "", updatedAt: now };
+export function reorderItems(items: string[], source: string, target: string) {
+  const from = items.indexOf(source);
+  const to = items.indexOf(target);
+  if (from < 0 || to < 0 || from === to) return items;
+  const reordered = [...items];
+  reordered.splice(to, 0, reordered.splice(from, 1)[0]);
+  return reordered;
 }
 
 export function updateDocumentRecovery(

@@ -8,7 +8,7 @@ const menus = await import(`data:text/javascript;base64,${Buffer.from(compiled).
 const rows = (target) => menus.contextMenuSections(target).flatMap((section) => section.actions);
 
 assert.deepEqual(rows({ kind: "empty" }), [
-  "open-file", "open-folder", "new-note", "new-markdown", "new-html", "new-text",
+  "open-file", "open-folder", "new-markdown", "new-html", "new-text",
   "toggle-sidebar", "toggle-theme", "settings",
 ]);
 assert.deepEqual(rows({ kind: "sidebar-entry", entryKind: "file", root: true, expanded: false }), [

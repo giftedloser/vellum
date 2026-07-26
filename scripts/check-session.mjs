@@ -20,13 +20,10 @@ assert.deepEqual(session.emptySession(), {
 });
 assert.equal(session.noteTitle(notes[0]), "Untitled 2");
 assert.equal(session.noteTitle(notes[1]), "First line");
-assert.deepEqual(session.createNote(notes, 30, "c"), {
-  id: "c",
-  fallbackTitle: "Untitled 3",
-  content: "",
-  updatedAt: 30,
-});
+assert.equal(session.contentTitle(`  ${"Long title ".repeat(8)}\nSecond`, "Untitled"), `${"Long title ".repeat(4).trim()}…`);
 assert.deepEqual(session.sortNotes(notes).map((note) => note.id), ["a", "b"]);
+assert.deepEqual(session.reorderItems(["a", "b", "c"], "a", "c"), ["b", "c", "a"]);
+assert.deepEqual(session.reorderItems(["a", "b", "c"], "missing", "c"), ["a", "b", "c"]);
 
 const recovery = { path: "notes.txt", content: "draft", baseModifiedMs: 10, updatedAt: 20 };
 assert.deepEqual(session.updateDocumentRecovery([], "notes.txt", "draft", 10, "saved", 20), [recovery]);

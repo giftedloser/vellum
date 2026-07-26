@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -15,7 +15,7 @@ import FileTypeIcon from "./FileTypeIcon";
 import WindowControls from "./WindowControls";
 import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, type DocumentKind, type RecentItem } from "./recent";
 import { fontScaleOptions, interfaceScaleOptions, normalizeSegmentedPreferences, readingWidthOptions, sidebarOpacityOptions, stepValue, type SegmentOption, type SegmentValue } from "./settings";
-import { createNote, emptySession, noteTitle, sortNotes, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
+import { contentTitle, emptySession, noteTitle, reorderItems, sortNotes, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
 import {
   AArrowDown,
   AArrowUp,
@@ -644,22 +644,6 @@ function App() {
     updateSession((current) => ({ ...current, active: { type: "document", path }, workspace: draft.kind === "text" ? "notes" : "documents" }));
   }, [updateSession]);
 
-  const newNote = useCallback(() => {
-    const note = createNote(sessionRef.current.notes);
-    updateSession((current) => ({
-      ...current,
-      notes: [note, ...current.notes],
-      active: { type: "note", id: note.id },
-      workspace: "notes",
-    }));
-    setActiveDocument(undefined);
-    setActiveNoteId(note.id);
-    setDraftContent("");
-    setViewerMetrics(undefined);
-    setViewerWarning(false);
-    setEditMode(true);
-  }, [updateSession]);
-
   const deleteNote = useCallback(async (id: string) => {
     const note = sessionRef.current.notes.find((item) => item.id === id);
     if (!note) return;
@@ -974,7 +958,7 @@ function App() {
     // cases it did not, which would otherwise open WebView2's own unstyled
     // find bar over the app.
     if (key === "f") { event.preventDefault(); return; }
-    if (key === "n") { event.preventDefault(); newNote(); }
+    if (key === "n") { event.preventDefault(); newDocument("text"); }
     else if (key === "s" && hasActiveItem) { event.preventDefault(); void saveCurrent(event.shiftKey); }
     else if (key === "e" && activeDocument && activeDocument.kind !== "text") { event.preventDefault(); setEditMode((value) => !value); }
     else if (key === "o") { event.preventDefault(); void (event.shiftKey ? chooseFolder() : choosePath()); }
@@ -1034,7 +1018,10 @@ function App() {
   const displayedRecentEntries = visibleRecents(recentEntries, recentExpanded);
   const hiddenRecentCount = recentEntries.length - displayedRecentEntries.length;
   const displayedNotes = sortNotes(session.notes);
-  const pinnedInternalNotes = displayedNotes.filter((note) => pinnedNotes.includes(note.id));
+  const pinnedInternalNotes = pinnedNotes.flatMap((id) => {
+    const note = displayedNotes.find((item) => item.id === id);
+    return note ? [note] : [];
+  });
   const inProgressInternalNotes = displayedNotes.filter((note) => !pinnedNotes.includes(note.id));
 
   function removeSidebarItem(path: string) {
@@ -1051,6 +1038,26 @@ function App() {
 
   function toggleNotePin(id: string) {
     setPinnedNotes((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  function pinDragProps(kind: "document" | "note", id: string) {
+    const type = `application/x-vellum-${kind}-pin`;
+    return {
+      draggable: true,
+      onDragStart: (event: ReactDragEvent) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData(type, id);
+      },
+      onDragOver: (event: ReactDragEvent) => {
+        if (event.dataTransfer.types.includes(type)) event.preventDefault();
+      },
+      onDrop: (event: ReactDragEvent) => {
+        const source = event.dataTransfer.getData(type);
+        if (!source) return;
+        event.preventDefault();
+        (kind === "document" ? setPinned : setPinnedNotes)((current) => reorderItems(current, source, id));
+      },
+    };
   }
 
   function toggleSection(section: CollapsibleSection) {
@@ -1144,14 +1151,15 @@ function App() {
   function renderProgressRow(item: DocumentRecovery) {
     const kind = item.kind ?? documentKind(item.path);
     const name = item.name ?? basename(item.path);
+    const label = item.draft ? contentTitle(item.content, sidebarLabel(name, true)) : sidebarLabel(name, true);
     const itemPinned = pinned.includes(item.path);
     return (
       <div key={item.path} className={`tree-row-wrap pinnable-row ${activeDocument?.path === item.path ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, {
         target: { kind: "sidebar-progress", saved: !item.draft },
         path: item.path,
       })}>
-        <button type="button" className="tree-row" onClick={() => item.draft ? openDraft(item.path) : void openDocument(item.path)} title={name}>
-          <span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} /><span className="tree-label">{sidebarLabel(name, true)}</span>
+        <button type="button" className="tree-row" onClick={() => item.draft ? openDraft(item.path) : void openDocument(item.path)} title={label}>
+          <span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} /><span className="tree-label">{label}</span>
         </button>
         <span className="unsaved-dot sidebar-unsaved-dot" role="img" aria-label="Unsaved" />
         <button type="button" className="tree-remove tree-pin" onClick={() => togglePin(item.path)} title={itemPinned ? "Unpin" : "Pin"} aria-label={`${itemPinned ? "Unpin" : "Pin"} ${name}`}>{itemPinned ? <PinOff size={12} /> : <Pin size={12} />}</button>
@@ -1163,7 +1171,6 @@ function App() {
     switch (action) {
       case "open-file": return "Open file";
       case "open-folder": return "Open folder";
-      case "new-note": return "New Note";
       case "new-markdown": return "New Markdown";
       case "new-html": return "New HTML";
       case "new-text": return "New Text File";
@@ -1198,7 +1205,6 @@ function App() {
     switch (action) {
       case "open-file": return <Plus size={14} />;
       case "open-folder": return <FolderPlus size={14} />;
-      case "new-note": return <StickyNote size={14} />;
       case "new-markdown": return <FileTypeIcon kind="markdown" size={14} />;
       case "new-html": return <FileTypeIcon kind="html" size={14} />;
       case "new-text": return <FileTypeIcon kind="text" size={14} />;
@@ -1233,7 +1239,7 @@ function App() {
     switch (action) {
       case "open-file": return "Ctrl O";
       case "open-folder": return "Ctrl Shift O";
-      case "new-note": return "Ctrl N";
+      case "new-text": return "Ctrl N";
       case "undo": return "Ctrl Z";
       case "redo": return "Ctrl Y";
       case "cut": return "Ctrl X";
@@ -1302,7 +1308,6 @@ function App() {
     switch (action) {
       case "open-file": await choosePath(); break;
       case "open-folder": await chooseFolder(); break;
-      case "new-note": newNote(); break;
       case "new-markdown": newDocument("markdown"); break;
       case "new-html": newDocument("html"); break;
       case "new-text": newDocument("text"); break;
@@ -1376,9 +1381,13 @@ function App() {
           <section className="sidebar-section pinned-section">
             <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.pinned} onClick={() => toggleSection("pinned")}>{collapsedSections.pinned ? <ChevronRight size={11} /> : <ChevronDown size={11} />}Pinned</button>
             {!collapsedSections.pinned ? <div className="tree">
-              {workspace === "notes" ? pinnedInternalNotes.map(renderNoteRow) : null}
-              {pinnedProgressItems.map(renderProgressRow)}
-              {pinnedEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} />)}
+              {workspace === "notes" ? pinnedInternalNotes.map((note) => <div key={note.id} className="pinned-drag-item" {...pinDragProps("note", note.id)}>{renderNoteRow(note)}</div>) : null}
+              {pinned.flatMap((path) => {
+                const progress = pinnedProgressItems.find((item) => item.path === path);
+                if (progress) return [<div key={path} className="pinned-drag-item" {...pinDragProps("document", path)}>{renderProgressRow(progress)}</div>];
+                const entry = pinnedEntries.find((item) => item.path === path);
+                return entry ? [<div key={path} className="pinned-drag-item" {...pinDragProps("document", path)}><TreeNode entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} /></div>] : [];
+              })}
               {!pinnedEntries.length && !pinnedProgressItems.length && (workspace !== "notes" || !pinnedInternalNotes.length) ? <div className="section-empty">Empty</div> : null}
             </div> : null}
           </section>
@@ -1414,7 +1423,7 @@ function App() {
             {error ? <div className="error-banner" role="alert"><span>{error}</span><button type="button" onClick={() => setError(undefined)} aria-label="Dismiss error"><X size={14} /></button></div> : null}
             {viewerWarning ? <div className="error-banner viewer-warning" role="status"><span>Some HTML resources or browser features were blocked or failed to load.</span><button type="button" onClick={() => setViewerWarning(false)} aria-label="Dismiss warning"><X size={14} /></button></div> : null}
             {!hasActiveItem ? (
-              <div className="welcome"><div className="welcome-content"><h1>Vellum</h1><p>A quiet place to read, edit, and organize documents and notes.</p><div className="welcome-actions"><button type="button" onClick={choosePath}>Open a file</button><button type="button" className="secondary" onClick={newNote}>New note</button></div><div className="welcome-shortcuts"><span><kbd>Ctrl O</kbd> Open file</span><span><kbd>Ctrl N</kbd> New note</span></div></div></div>
+              <div className="welcome"><div className="welcome-content"><h1>Vellum</h1><p>A quiet place to read, edit, and organize documents and notes.</p><div className="welcome-actions"><button type="button" onClick={choosePath}>Open a file</button><button type="button" className="secondary" onClick={() => newDocument("text")}>New text file</button></div><div className="welcome-shortcuts"><span><kbd>Ctrl O</kbd> Open file</span><span><kbd>Ctrl N</kbd> New text file</span></div></div></div>
             ) : activeNote || activeDocument?.kind === "text" || editMode ? (
               <div className="editor-shell"><Suspense fallback={<div className="welcome"><p>Loading editor…</p></div>}><SourceEditor key={editorKey} value={draftContent} language={editorLanguage!} wrap={preferences.editorWrap} fontSize={preferences.editorFontSize} fontFamily={editorFonts[preferences.editorFont]} onChange={changeDraft} onViewChange={(view) => { editorView.current = view; }} /></Suspense></div>
             ) : activeDocument?.kind === "markdown" ? (
@@ -1479,7 +1488,6 @@ function App() {
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); void choosePath(); }}><FileText size={15} /><span><strong>Add file</strong><small>Choose Markdown, HTML, or text</small></span></button>
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); void chooseFolder(); }}><FolderPlus size={15} /><span><strong>Add folder</strong><small>Browse documents in the sidebar</small></span></button>
         <div className="sidebar-add-separator" />
-        <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newNote(); }}><StickyNote size={15} /><span><strong>New Note</strong><small>Create a persistent scratch note</small></span></button>
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("markdown"); }}><FileTypeIcon kind="markdown" size={15} /><span><strong>New Markdown</strong><small>Create an empty .md document</small></span></button>
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("html"); }}><FileTypeIcon kind="html" size={15} /><span><strong>New HTML</strong><small>Create an HTML starter document</small></span></button>
         <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); newDocument("text"); }}><FileTypeIcon kind="text" size={15} /><span><strong>New Text File</strong><small>Create an empty .txt document</small></span></button>
