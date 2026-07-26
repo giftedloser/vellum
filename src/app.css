@@ -844,7 +844,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .pinned-drag-item { position: relative; min-width: 0; }
 .pinned-drag-item:active { cursor: grabbing; }
 .pinned-drag-item.drop-before::before,
-.pinned-drag-item.drop-after::after { position: absolute; z-index: 2; right: 16px; left: 16px; height: 1px; background: color-mix(in srgb, var(--accent) 55%, transparent); content: ""; pointer-events: none; }
+.pinned-drag-item.drop-after::after { position: absolute; z-index: 2; right: 8px; left: 8px; height: 1px; background: color-mix(in srgb, var(--accent) 55%, transparent); content: ""; pointer-events: none; }
 .pinned-drag-item.drop-before::before { top: 0; }
 .pinned-drag-item.drop-after::after { bottom: 0; }
 .sidebar-add-separator { height: 1px; margin: 4px 6px; background: var(--border); }
