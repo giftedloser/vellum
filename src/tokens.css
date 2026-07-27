@@ -48,6 +48,7 @@
   --active: oklch(0 0 0 / .13);
   --scroll-thumb: oklch(0 0 0 / .28);
   --txt-icon: #7b5f9e;
+  --unsaved: #9c6b38;
 
   /* Paper texture: grain only. The vignette and wash gradient layers were
      removed; the vignette read as a dark wash across panel edges. */
@@ -103,6 +104,7 @@
   --active: oklch(1 0 0 / .13);
   --scroll-thumb: oklch(1 0 0 / .24);
   --txt-icon: #c1a4df;
+  --unsaved: #d3a36d;
 
   --paper-blend: soft-light;
 

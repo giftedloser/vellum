@@ -13,6 +13,7 @@ export type ContextMenuAction =
   | "remove-sidebar"
   | "open-note"
   | "toggle-note-pin"
+  | "rename"
   | "delete-note"
   | "undo"
   | "redo"
@@ -74,12 +75,12 @@ export function contextMenuSections(target: ContextMenuTarget): ContextMenuSecti
 
   if (target.kind === "sidebar-progress") {
     return [{
-      actions: ["open-target", ...(target.saved ? ["reveal-target" as const] : []), "toggle-pin"],
+      actions: ["open-target", ...(!target.saved ? ["rename" as const] : []), ...(target.saved ? ["reveal-target" as const] : []), "toggle-pin"],
     }];
   }
 
   if (target.kind === "sidebar-note") {
-    return [{ actions: ["open-note", "toggle-note-pin", "delete-note"] }];
+    return [{ actions: ["open-note", "rename", "toggle-note-pin", "delete-note"] }];
   }
 
   if (target.kind === "editor") {

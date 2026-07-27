@@ -35,6 +35,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Pin,
   PinOff,
   Plus,
@@ -73,6 +74,7 @@ type OpenDocument = {
   kind: DocumentKind;
   modifiedMs: number;
   assetBaseUrl?: string;
+  title?: string;
   draft?: boolean;
 };
 
@@ -94,6 +96,7 @@ type ContextMenuRequest = Pick<ContextMenuState, "target" | "path" | "noteId" | 
    and blocked the event loop. resolve is settled exactly once, by whichever
    of confirm, cancel, backdrop click or Escape happens first. */
 type ConfirmRequest = { title: string; body: string; confirmLabel: string; danger?: boolean; resolve: (accepted: boolean) => void };
+type RenamingItem = { kind: "document" | "note"; id: string; value: string };
 type ViewerMetrics = { contentWidth: number; viewportWidth: number };
 type EditorFont = "Zed Mono" | "JetBrains Mono" | "Cascadia Mono" | "Consolas";
 type SidebarMotion = "quick" | "balanced" | "relaxed";
@@ -222,7 +225,7 @@ function filterEntryForWorkspace(entry: Entry, workspace: Workspace): Entry | un
   }) };
 }
 
-const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i"),warn=()=>parent.postMessage({type:"vellum-viewer-warning"},"*");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("error",warn,true);addEventListener("unhandledrejection",warn);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY,selectedText:String(getSelection()?.toString()||"")},"*")});addEventListener("keydown",event=>{if(event.key==="Escape")parent.postMessage({type:"vellum-viewer-escape"},"*")},true);addEventListener("pointerdown",()=>parent.postMessage({type:"vellum-viewer-pointerdown"},"*"),true)})()`;
+const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i"),warn=()=>parent.postMessage({type:"vellum-viewer-warning"},"*");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("error",warn,true);addEventListener("unhandledrejection",warn);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY,selectedText:String(getSelection()?.toString()||"")},"*")});addEventListener("keydown",event=>{const key=event.key.toLowerCase();if(event.key==="F3"||((event.ctrlKey||event.metaKey)&&(key==="f"||key==="g")))event.preventDefault();if(event.key==="Escape")parent.postMessage({type:"vellum-viewer-escape"},"*")},true);addEventListener("pointerdown",()=>parent.postMessage({type:"vellum-viewer-pointerdown"},"*"),true)})()`;
 
 function prepareHtml(content: string, theme: ResolvedTheme, baseUrl?: string) {
   const thumb = theme === "dark" ? "oklch(1 0 0 / .24)" : "oklch(0 0 0 / .28)";
@@ -236,10 +239,11 @@ function documentIcon(path: string, size = 15) {
   return <FileTypeIcon kind={documentKind(path)} size={size} />;
 }
 
-function TreeNode({ entry, activePath, root = false, pinnedPaths, onOpen, onPin, onRemove, onContextMenu }: {
+function TreeNode({ entry, activePath, root = false, removable = false, pinnedPaths, onOpen, onPin, onRemove, onContextMenu }: {
   entry: Entry;
   activePath?: string;
   root?: boolean;
+  removable?: boolean;
   pinnedPaths?: string[];
   onOpen: (path: string) => void;
   onPin?: (path: string) => void;
@@ -262,7 +266,7 @@ function TreeNode({ entry, activePath, root = false, pinnedPaths, onOpen, onPin,
       <div className={`tree-row-wrap ${root ? "root-row" : onPin ? "pinnable-row" : ""} ${activePath === entry.path ? "active" : ""}`} onContextMenu={(event) => onContextMenu(event, {
         path: entry.path,
         entryKind: entry.kind,
-        root,
+        root: removable,
         expanded,
         toggleFolder: isDirectory ? () => setExpanded((value) => !value) : undefined,
       })}>
@@ -282,7 +286,7 @@ function TreeNode({ entry, activePath, root = false, pinnedPaths, onOpen, onPin,
             {pinned ? <PinOff size={12} /> : <Pin size={12} />}
           </button>
         ) : null}
-        {root && onRemove ? <button type="button" className="tree-remove" onClick={() => onRemove(entry.path)} title="Remove from sidebar" aria-label={`Remove ${entry.name} from sidebar`}><X size={13} /></button> : null}
+        {removable && onRemove ? <button type="button" className="tree-remove" onClick={() => onRemove(entry.path)} title="Remove from sidebar" aria-label={`Remove ${entry.name} from sidebar`}><X size={13} /></button> : null}
       </div>
       {isDirectory && expanded && entry.children?.length ? (
         <div className="tree-children">
@@ -357,6 +361,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => startupLaunch.current ? false : readStored("vellum.sidebarOpen:v1", true));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest>();
+  const [renamingItem, setRenamingItem] = useState<RenamingItem>();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
   const [pinDrop, setPinDrop] = useState<{ key: string; after: boolean }>();
@@ -388,6 +393,7 @@ function App() {
   const activeDocumentRef = useRef<OpenDocument | undefined>(undefined);
   const pinPointer = useRef<{ key: string; pointerId: number; startX: number; startY: number; dragging: boolean } | undefined>(undefined);
   const suppressPinClick = useRef(false);
+  const cancelRename = useRef(false);
 
   const activePath = activeDocument?.draft ? undefined : activeDocument?.path;
   const activeNote = activeNoteId ? session.notes.find((note) => note.id === activeNoteId) : undefined;
@@ -639,7 +645,7 @@ function App() {
     if (!draft?.kind || !draft.name) return;
     openRequest.current += 1;
     setActiveNoteId(undefined);
-    setActiveDocument({ path, name: draft.name, content: draft.content, kind: draft.kind, modifiedMs: 0, draft: true });
+    setActiveDocument({ path, name: draft.name, content: draft.content, kind: draft.kind, modifiedMs: 0, title: draft.title, draft: true });
     setDraftContent(draft.content);
     setViewerMetrics(undefined);
     setViewerWarning(false);
@@ -690,7 +696,7 @@ function App() {
         activeDocument.modifiedMs,
         activeDocument.content,
         Date.now(),
-        activeDocument.draft ? { draft: true, kind: activeDocument.kind, name: activeDocument.name } : undefined,
+        activeDocument.draft ? { draft: true, kind: activeDocument.kind, name: activeDocument.name, title: activeDocument.title } : undefined,
       ),
     }));
   }, [activeDocument, draftContent, updateSession]);
@@ -963,13 +969,17 @@ function App() {
     if (event.key === "Escape" && contextMenu) { dismissContextMenu(); return; }
     if (event.key === "Escape" && addMenuOpen) { setAddMenuOpen(false); return; }
     if (event.key === "Escape" && settingsOpen) { setSettingsOpen(false); return; }
+    // Swallow every key WebView2 binds to its own unstyled find bar, not just
+    // Ctrl+F: F3 and Ctrl+G open and advance the same bar, and F3 carries no
+    // modifier, so it used to escape past the check below. CodeMirror binds
+    // these on contentDOM and has already run by the time this bubbles to
+    // window, so preventDefault here stops the native bar without costing the
+    // editor its own find. The viewer iframe is a separate document and
+    // suppresses them itself; see viewerScript.
+    if (event.key === "F3") { event.preventDefault(); return; }
     if (!modifier) return;
     const key = event.key.toLowerCase();
-    // Swallow Ctrl+F everywhere. The editor handles it and prevents the
-    // default itself; this runs later in the bubble and only catches the
-    // cases it did not, which would otherwise open WebView2's own unstyled
-    // find bar over the app.
-    if (key === "f") { event.preventDefault(); return; }
+    if (key === "f" || key === "g") { event.preventDefault(); return; }
     if (key === "n") { event.preventDefault(); newDocument("text"); }
     else if (key === "s" && hasActiveItem) { event.preventDefault(); void saveCurrent(event.shiftKey); }
     else if (key === "e" && activeDocument && activeDocument.kind !== "text") { event.preventDefault(); setEditMode((value) => !value); }
@@ -1204,15 +1214,63 @@ function App() {
     });
   }
 
+  function commitRename(item: RenamingItem) {
+    const value = item.value.trim().slice(0, 80);
+    setRenamingItem(undefined);
+    if (!value) return;
+    if (item.kind === "note") {
+      updateSession((current) => ({ ...current, notes: current.notes.map((note) => note.id === item.id ? { ...note, title: value } : note) }));
+      return;
+    }
+    const draft = sessionRef.current.documents.find((document) => document.path === item.id && document.draft);
+    if (!draft) return;
+    const title = sidebarLabel(value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-"), true);
+    if (!title) return;
+    const name = ensureExtension(title, draft.kind ?? documentKind(item.id));
+    updateSession((current) => ({ ...current, documents: current.documents.map((document) => document.path === item.id ? { ...document, name, title } : document) }));
+    setActiveDocument((current) => current?.path === item.id ? { ...current, name, title } : current);
+  }
+
+  function inlineRename(item: RenamingItem) {
+    return <input
+      className="sidebar-rename"
+      value={item.value}
+      maxLength={80}
+      aria-label="Rename unsaved item"
+      autoFocus
+      onFocus={(event) => event.currentTarget.select()}
+      onChange={(event) => setRenamingItem({ ...item, value: event.currentTarget.value })}
+      onBlur={(event) => {
+        if (cancelRename.current) {
+          cancelRename.current = false;
+          setRenamingItem(undefined);
+        } else {
+          commitRename({ ...item, value: event.currentTarget.value });
+        }
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          cancelRename.current = true;
+          event.currentTarget.blur();
+        }
+      }}
+    />;
+  }
+
   function renderNoteRow(note: Note) {
     const notePinned = pinnedNotes.includes(note.id);
+    const renaming = renamingItem?.kind === "note" && renamingItem.id === note.id ? renamingItem : undefined;
     return (
       <div key={note.id} className={`tree-row-wrap note-row ${activeNoteId === note.id ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, { target: { kind: "sidebar-note" }, noteId: note.id })}>
-        <button type="button" className="tree-row" onClick={() => openNote(note.id)} title={noteTitle(note)}>
+        {renaming ? <div className="tree-row"><span className="tree-chevron" /><FileTypeIcon kind="text" size={13} />{inlineRename(renaming)}</div> : <button type="button" className="tree-row" onClick={() => openNote(note.id)} title={noteTitle(note)}>
           <span className="tree-chevron" />
           <FileTypeIcon kind="text" size={13} />
-          <span className="tree-label">{noteTitle(note)}</span>
-        </button>
+          <span className="tree-label" onDoubleClick={() => setRenamingItem({ kind: "note", id: note.id, value: note.title || note.fallbackTitle })}>{noteTitle(note)}</span>
+        </button>}
         <span className="unsaved-dot sidebar-unsaved-dot" role="img" aria-label="Unsaved" />
         <button type="button" className="tree-remove tree-pin" onClick={() => toggleNotePin(note.id)} title={notePinned ? "Unpin" : "Pin"} aria-label={`${notePinned ? "Unpin" : "Pin"} ${noteTitle(note)}`}>{notePinned ? <PinOff size={12} /> : <Pin size={12} />}</button>
       </div>
@@ -1222,16 +1280,17 @@ function App() {
   function renderProgressRow(item: DocumentRecovery) {
     const kind = item.kind ?? documentKind(item.path);
     const name = item.name ?? basename(item.path);
-    const label = item.draft ? contentTitle(item.content, sidebarLabel(name, true)) : sidebarLabel(name, true);
+    const label = item.draft ? item.title || contentTitle(item.content, sidebarLabel(name, true)) : sidebarLabel(name, true);
     const itemPinned = pinned.includes(item.path);
+    const renaming = item.draft && renamingItem?.kind === "document" && renamingItem.id === item.path ? renamingItem : undefined;
     return (
       <div key={item.path} className={`tree-row-wrap pinnable-row ${activeDocument?.path === item.path ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, {
         target: { kind: "sidebar-progress", saved: !item.draft },
         path: item.path,
       })}>
-        <button type="button" className="tree-row" onClick={() => item.draft ? openDraft(item.path) : void openDocument(item.path)} title={label}>
-          <span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} /><span className="tree-label">{label}</span>
-        </button>
+        {renaming ? <div className="tree-row"><span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} />{inlineRename(renaming)}</div> : <button type="button" className="tree-row" onClick={() => item.draft ? openDraft(item.path) : void openDocument(item.path)} title={label}>
+          <span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} /><span className="tree-label" onDoubleClick={() => item.draft && setRenamingItem({ kind: "document", id: item.path, value: item.title || sidebarLabel(name, true) })}>{label}</span>
+        </button>}
         <span className="unsaved-dot sidebar-unsaved-dot" role="img" aria-label="Unsaved" />
         <button type="button" className="tree-remove tree-pin" onClick={() => togglePin(item.path)} title={itemPinned ? "Unpin" : "Pin"} aria-label={`${itemPinned ? "Unpin" : "Pin"} ${name}`}>{itemPinned ? <PinOff size={12} /> : <Pin size={12} />}</button>
       </div>
@@ -1252,6 +1311,7 @@ function App() {
       case "toggle-pin": return contextMenu?.path && pinned.includes(contextMenu.path) ? "Unpin" : "Pin";
       case "remove-sidebar": return "Remove from sidebar";
       case "toggle-note-pin": return contextMenu?.noteId && pinnedNotes.includes(contextMenu.noteId) ? "Unpin note" : "Pin note";
+      case "rename": return "Rename";
       case "delete-note": return "Delete note";
       case "undo": return "Undo";
       case "redo": return "Redo";
@@ -1286,6 +1346,7 @@ function App() {
       case "remove-sidebar": return <X size={14} />;
       case "open-note": return <StickyNote size={14} />;
       case "toggle-note-pin": return contextMenu?.noteId && pinnedNotes.includes(contextMenu.noteId) ? <PinOff size={14} /> : <Pin size={14} />;
+      case "rename": return <Pencil size={14} />;
       case "delete-note": return <Trash2 size={14} />;
       case "undo": return <Undo2 size={14} />;
       case "redo": return <Redo2 size={14} />;
@@ -1395,6 +1456,15 @@ function App() {
       case "remove-sidebar": if (path) removeSidebarItem(path); break;
       case "open-note": if (noteId) openNote(noteId); break;
       case "toggle-note-pin": if (noteId) toggleNotePin(noteId); break;
+      case "rename":
+        if (noteId) {
+          const note = sessionRef.current.notes.find((item) => item.id === noteId);
+          if (note) setRenamingItem({ kind: "note", id: noteId, value: note.title || note.fallbackTitle });
+        } else if (path) {
+          const draft = sessionRef.current.documents.find((item) => item.path === path && item.draft);
+          if (draft) setRenamingItem({ kind: "document", id: path, value: draft.title || sidebarLabel(draft.name ?? basename(path), true) });
+        }
+        break;
       case "delete-note": if (noteId) await deleteNote(noteId); break;
       case "save": await saveCurrent(false); break;
       case "save-as": await saveCurrent(true); break;
@@ -1475,7 +1545,7 @@ function App() {
           <section className={`sidebar-section recent-section ${collapsedSections.recent ? "collapsed" : ""}`}>
             <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.recent} onClick={() => toggleSection("recent")}>{collapsedSections.recent ? <ChevronRight size={11} /> : <ChevronDown size={11} />}Recent</button>
             {!collapsedSections.recent ? <div className="tree">
-              {displayedRecentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} />)}
+              {displayedRecentEntries.map((entry) => <TreeNode key={entry.path} entry={entry} activePath={activePath} root removable pinnedPaths={pinned} onOpen={openDocument} onPin={togglePin} onRemove={removeSidebarItem} onContextMenu={showTreeContextMenu} />)}
               {hiddenRecentCount > 0 ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(true)} aria-expanded="false">More ({hiddenRecentCount})</button> : null}
               {recentExpanded && recentEntries.length > collapsedRecentCount ? <button type="button" className="recent-more" onClick={() => setRecentExpanded(false)} aria-expanded="true">Show less</button> : null}
               {!recentEntries.length ? <div className="section-empty">Empty</div> : null}

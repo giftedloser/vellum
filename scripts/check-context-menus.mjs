@@ -18,8 +18,8 @@ assert.deepEqual(rows({ kind: "sidebar-entry", entryKind: "directory", root: fal
   "toggle-folder", "reveal-target", "toggle-pin",
 ]);
 assert.deepEqual(rows({ kind: "sidebar-progress", saved: true }), ["open-target", "reveal-target", "toggle-pin"]);
-assert.deepEqual(rows({ kind: "sidebar-progress", saved: false }), ["open-target", "toggle-pin"]);
-assert.deepEqual(rows({ kind: "sidebar-note" }), ["open-note", "toggle-note-pin", "delete-note"]);
+assert.deepEqual(rows({ kind: "sidebar-progress", saved: false }), ["open-target", "rename", "toggle-pin"]);
+assert.deepEqual(rows({ kind: "sidebar-note" }), ["open-note", "rename", "toggle-note-pin", "delete-note"]);
 assert.deepEqual(rows({
   kind: "editor",
   documentKind: "markdown",

@@ -37,11 +37,11 @@ Windows protects whichever application you have already chosen for a file type, 
 ## Usage
 
 - Open one document or browse a complete folder.
-- Pin files and folders without moving or changing them on disk.
+- Pin files and folders without moving or changing them on disk, and drag pinned items into whatever order you want.
 - See recently used documents in activity order.
 - Switch between HTML/Markdown and TXT workspaces; each keeps the same Pinned, In Progress, and Recent sidebar structure.
 - Create new Markdown, HTML, or text files.
-- Keep multiple scratch notes, titled from their first non-empty line and ordered by recent edits.
+- Keep multiple scratch notes, titled from their first non-empty line and ordered by recent edits. Rename any unsaved note or draft from its context menu, or by double-clicking its title in the sidebar.
 - Edit source with syntax highlighting, search, undo/redo, word wrap, and adjustable code fonts.
 - Edit plain text with wrapping plus word and character counts.
 - Save, Save As, Revert, reload externally changed files, and preview unsaved edits.

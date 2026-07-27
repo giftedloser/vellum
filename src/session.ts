@@ -4,6 +4,7 @@ export type DocumentKind = "markdown" | "html" | "text";
 export type Note = {
   id: string;
   fallbackTitle: string;
+  title?: string;
   content: string;
   updatedAt: number;
 };
@@ -15,6 +16,7 @@ export type DocumentRecovery = {
   updatedAt: number;
   kind?: DocumentKind;
   name?: string;
+  title?: string;
   draft?: boolean;
 };
 
@@ -41,7 +43,7 @@ export function contentTitle(content: string, fallback: string) {
 }
 
 export function noteTitle(note: Note) {
-  return contentTitle(note.content, note.fallbackTitle);
+  return note.title || contentTitle(note.content, note.fallbackTitle);
 }
 
 export function sortNotes(notes: Note[]) {
@@ -68,7 +70,7 @@ export function updateDocumentRecovery(
   baseModifiedMs: number,
   baselineContent: string,
   now = Date.now(),
-  details: Pick<DocumentRecovery, "kind" | "name" | "draft"> = {},
+  details: Pick<DocumentRecovery, "kind" | "name" | "title" | "draft"> = {},
 ) {
   if (content === baselineContent && !details.draft) return documents.filter((document) => document.path !== path);
   const recovery = { path, content, baseModifiedMs, updatedAt: now, ...details };
