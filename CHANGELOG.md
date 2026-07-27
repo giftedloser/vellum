@@ -2,6 +2,29 @@
 
 All notable changes to Vellum are documented in this file.
 
+## [1.0.5] - 2026-07-26
+
+### Added
+
+- Unsaved notes and drafts can be renamed from their context menu or by double-clicking the title in the sidebar. The name survives the session, and a renamed draft carries its title into Save As.
+- Pinned sidebar items can be reordered by dragging, with an accent insertion line marking where the item will land.
+
+### Fixed
+
+- Unsaved notes and drafts are titled from their first line again instead of all reading Untitled.
+- Dragging inside the window works, rather than being captured as an operating system file drop.
+- The rename field no longer draws a dark focus box around the sidebar row it sits in.
+- The selected segment in Settings is centred on its control.
+- The browser engine's find bar can no longer be reached with `F3` or from inside a rendered HTML document, the two paths the earlier fix did not cover.
+- Note and draft labels reclaim the sidebar column that their unsaved dot used to occupy.
+
+### Changed
+
+- The unsaved dot is amber in both the sidebar and the Edit button, and yields to the pin control when a row is hovered.
+- New text notes are ordinary `.txt` documents; the separate Scratch Pad type is gone.
+- Undecorated window edges and corners are cleaned up, with the native Windows shadow enabled.
+- Browser-native dialogs and popups are suppressed in the viewer.
+
 ## [1.0.4] - 2026-07-26
 
 ### Added
@@ -112,6 +135,7 @@ All notable changes to Vellum are documented in this file.
 - Kept HTML rendering inside a sandboxed opaque-origin frame.
 - Added JavaScript and Rust dependency audits to continuous integration.
 
+[1.0.5]: https://github.com/giftedloser/vellum/releases/tag/v1.0.5
 [1.0.4]: https://github.com/giftedloser/vellum/releases/tag/v1.0.4
 [1.0.3]: https://github.com/giftedloser/vellum/releases/tag/v1.0.3
 [1.0.2]: https://github.com/giftedloser/vellum/releases/tag/v1.0.2
