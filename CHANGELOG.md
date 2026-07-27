@@ -2,6 +2,12 @@
 
 All notable changes to Vellum are documented in this file.
 
+## [1.0.7] - 2026-07-27
+
+### Fixed
+
+- Pinned sidebar items could not be opened. The row highlighted on press but never opened anything, because the drag handler claimed the pointer as soon as it went down, which moved the click off the row's own button. The pointer is now claimed only once a drag actually starts, so an ordinary click reaches the row untouched.
+
 ## [1.0.6] - 2026-07-27
 
 ### Fixed
@@ -146,6 +152,7 @@ All notable changes to Vellum are documented in this file.
 - Kept HTML rendering inside a sandboxed opaque-origin frame.
 - Added JavaScript and Rust dependency audits to continuous integration.
 
+[1.0.7]: https://github.com/giftedloser/vellum/releases/tag/v1.0.7
 [1.0.6]: https://github.com/giftedloser/vellum/releases/tag/v1.0.6
 [1.0.5]: https://github.com/giftedloser/vellum/releases/tag/v1.0.5
 [1.0.4]: https://github.com/giftedloser/vellum/releases/tag/v1.0.4

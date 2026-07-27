@@ -1124,10 +1124,15 @@ function App() {
     };
     return {
       "data-pin-key": key,
+      /* Capture is taken when the drag starts, never on pointerdown. Capturing
+         up front retargets pointerup to this wrapper, so the browser fires the
+         click on the nearest common ancestor of pointerdown and pointerup,
+         which is the wrapper rather than the row's button. The row highlighted
+         on press and then opened nothing. A plain click now never captures at
+         all, so its targeting is untouched. */
       onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
         if (event.button !== 0) return;
         pinPointer.current = { key, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dragging: false };
-        event.currentTarget.setPointerCapture(event.pointerId);
       },
       onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => {
         const pointer = pinPointer.current;
@@ -1136,6 +1141,10 @@ function App() {
         if (!pointer.dragging) {
           pointer.dragging = true;
           setDraggedPinKey(pointer.key);
+          // Capture last, and guarded: it throws if the pointer is no longer
+          // active, and losing it only costs tracking outside the row, which
+          // must not take the whole drag down with it.
+          try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* pointer already gone */ }
         }
         event.preventDefault();
         const target = targetAt(event.clientX, event.clientY);
