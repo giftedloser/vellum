@@ -1059,7 +1059,16 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   padding: 12px 0;
 }
 
-.setting-row:last-child { border-bottom: 0; }
+/* Adjacent rows only, so a group never ends on a dangling rule: the element
+   after a group's last row is the next h3, which carries its own. The tint
+   keeps this weaker than the group label's full-strength border, so the two
+   read as different sizes of division rather than competing. */
+.setting-row + .setting-row { border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent); }
+
+/* Reset is a global action, not an Editor setting, and being last in the
+   scroll it was reading as one. Full-weight rule plus a gap detaches it. */
+.setting-row:last-child { margin-top: 11px; border-top: 1px solid var(--border); }
+
 .setting-row > div:first-child { display: grid; gap: 3px; }
 .setting-row strong { color: var(--text-body); font-size: var(--text-md); font-weight: var(--weight-medium); letter-spacing: -.008em; }
 .setting-row span { color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.45; }
@@ -1140,9 +1149,12 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 .settings-font-picker .font-picker-menu { z-index: 2; }
 
+/* Same 36px face and surface tint as the segmented controls, steppers, and
+   font picker. It was the one control in the panel opting out, at 38px and
+   transparent, which read as a stray element rather than the row's control. */
 .reset-button {
   min-width: 84px;
-  height: 38px;
+  height: 36px;
   padding: 0 11px;
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -1150,7 +1162,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: transparent;
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }

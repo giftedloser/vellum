@@ -188,6 +188,22 @@ function ensureExtension(path: string, kind: DocumentKind) {
   return valid.includes(extension(path)) ? path : `${path}.${valid[0]}`;
 }
 
+/* A low click opens the menu upward and a high one opens it downward, but in
+   both directions the anchored edge sits on the pointer. The previous rule
+   pinned `bottom: 8` for anything past the halfway mark, which parked the menu
+   at the foot of the window: right-clicking just below centre put its menu
+   most of a screen away from the cursor. maxHeight is the room actually
+   available in whichever direction was chosen. Shared by the sidebar/editor
+   path and the viewer-iframe path so the two cannot drift apart. */
+function menuPlacement(x: number, y: number) {
+  const openUp = y > window.innerHeight / 2;
+  return {
+    x: Math.max(8, Math.min(x, window.innerWidth - 224)),
+    ...(openUp ? { bottom: Math.max(8, window.innerHeight - y) } : { y }),
+    maxHeight: (openUp ? y : window.innerHeight - y) - 8,
+  };
+}
+
 function readStored<T>(key: string, fallback: T): T {
   try {
     const value = localStorage.getItem(key);
@@ -938,9 +954,7 @@ function App() {
       // Copy remains user-triggered; add a private channel only if spoofing
       // becomes a demonstrated clipboard-poisoning problem.
       setContextMenu({
-        x: Math.max(8, Math.min(rect.left + x, window.innerWidth - 224)),
-        ...(menuY > window.innerHeight / 2 ? { bottom: 8 } : { y: menuY }),
-        maxHeight: menuY > window.innerHeight / 2 ? window.innerHeight - 16 : window.innerHeight - menuY - 8,
+        ...menuPlacement(rect.left + x, menuY),
         target: { kind: "viewer", saved: !document.draft, selection: Boolean(selectedText) },
         path: document.draft ? undefined : document.path,
         selectedText,
@@ -1193,9 +1207,7 @@ function App() {
     }
     contextMenuReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setContextMenu({
-      x: Math.max(8, Math.min(menuX, window.innerWidth - 224)),
-      ...(menuY > window.innerHeight / 2 ? { bottom: 8 } : { y: menuY }),
-      maxHeight: menuY > window.innerHeight / 2 ? window.innerHeight - 16 : window.innerHeight - menuY - 8,
+      ...menuPlacement(menuX, menuY),
       ...(next ?? { target: { kind: "empty" } }),
     });
   }
