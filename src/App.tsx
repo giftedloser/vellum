@@ -692,6 +692,30 @@ function App() {
     }
   }, [activeNoteId, updateSession]);
 
+  const deleteDraft = useCallback(async (path: string) => {
+    const draft = sessionRef.current.documents.find((item) => item.path === path && item.draft);
+    if (!draft) return;
+    const label = draft.title || sidebarLabel(draft.name ?? basename(path), true);
+    if (!await askConfirm({
+      title: "Delete file?",
+      body: `"${label}" has never been saved to a file. Deleting it cannot be undone.`,
+      confirmLabel: "Delete",
+      danger: true,
+    })) return;
+    updateSession((current) => ({
+      ...current,
+      documents: current.documents.filter((item) => item.path !== path),
+      active: current.active?.type === "document" && current.active.path === path ? null : current.active,
+    }));
+    setPinned((current) => current.filter((item) => item !== path));
+    setPinOrder((current) => current.filter((key) => key !== pinKey("document", path)));
+    if (activeDocument?.path === path) {
+      setActiveDocument(undefined);
+      setDraftContent("");
+      setEditMode(false);
+    }
+  }, [activeDocument, updateSession]);
+
   const changeDraft = useCallback((content: string) => {
     setDraftContent(content);
     if (!activeNoteId) return;
@@ -1038,8 +1062,10 @@ function App() {
   const workspaceProgressItems = session.documents
     .filter((item) => (workspace === "notes") === ((item.kind ?? documentKind(item.path)) === "text"));
   const pinnedProgressItems = workspaceProgressItems.filter((item) => pinned.includes(item.path));
-  const openItems = workspaceProgressItems
-    .filter((item) => !pinned.includes(item.path));
+  // Everything in session.documents has unsaved work in it (updateDocumentRecovery
+  // drops a document once its content matches disk), so pinning must not pull it
+  // out of In Progress. Pinned items simply appear in both places until saved.
+  const openItems = workspaceProgressItems;
   const openPaths = new Set(openItems.map((item) => item.path));
   const recentCandidates = [...recent]
     .sort((a, b) => b.modifiedMs - a.modifiedMs)
@@ -1059,7 +1085,9 @@ function App() {
     const note = displayedNotes.find((item) => item.id === id);
     return note ? [note] : [];
   });
-  const inProgressInternalNotes = displayedNotes.filter((note) => !pinnedNotes.includes(note.id));
+  // Notes only exist in the session, so they are unsaved by definition and stay
+  // in In Progress even while pinned.
+  const inProgressInternalNotes = displayedNotes;
   const allPinKeys = [...pinnedNotes.map((id) => pinKey("note", id)), ...pinned.map((path) => pinKey("document", path))];
   const allPinKeySet = new Set(allPinKeys);
   const orderedPinKeys = [...pinOrder.filter((key) => allPinKeySet.has(key)), ...allPinKeys.filter((key) => !pinOrder.includes(key))];
@@ -1282,11 +1310,11 @@ function App() {
     />;
   }
 
-  function renderNoteRow(note: Note) {
+  function renderNoteRow(note: Note, inProgress = false) {
     const notePinned = pinnedNotes.includes(note.id);
     const renaming = renamingItem?.kind === "note" && renamingItem.id === note.id ? renamingItem : undefined;
     return (
-      <div key={note.id} className={`tree-row-wrap note-row ${activeNoteId === note.id ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, { target: { kind: "sidebar-note" }, noteId: note.id })}>
+      <div key={note.id} className={`tree-row-wrap note-row ${activeNoteId === note.id ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, { target: { kind: "sidebar-note", inProgress }, noteId: note.id })}>
         {renaming ? <div className="tree-row"><span className="tree-chevron" /><FileTypeIcon kind="text" size={13} />{inlineRename(renaming)}</div> : <button type="button" className="tree-row" onClick={() => openNote(note.id)} title={noteTitle(note)}>
           <span className="tree-chevron" />
           <FileTypeIcon kind="text" size={13} />
@@ -1298,7 +1326,7 @@ function App() {
     );
   }
 
-  function renderProgressRow(item: DocumentRecovery) {
+  function renderProgressRow(item: DocumentRecovery, inProgress = false) {
     const kind = item.kind ?? documentKind(item.path);
     const name = item.name ?? basename(item.path);
     const label = item.draft ? item.title || contentTitle(item.content, sidebarLabel(name, true)) : sidebarLabel(name, true);
@@ -1306,7 +1334,7 @@ function App() {
     const renaming = item.draft && renamingItem?.kind === "document" && renamingItem.id === item.path ? renamingItem : undefined;
     return (
       <div key={item.path} className={`tree-row-wrap pinnable-row ${activeDocument?.path === item.path ? "active" : ""}`} onContextMenu={(event) => showContextMenu(event, {
-        target: { kind: "sidebar-progress", saved: !item.draft },
+        target: { kind: "sidebar-progress", saved: !item.draft, inProgress },
         path: item.path,
       })}>
         {renaming ? <div className="tree-row"><span className="tree-chevron" /><FileTypeIcon kind={kind} size={14} />{inlineRename(renaming)}</div> : <button type="button" className="tree-row" onClick={() => item.draft ? openDraft(item.path) : void openDocument(item.path)} title={label}>
@@ -1334,6 +1362,7 @@ function App() {
       case "toggle-note-pin": return contextMenu?.noteId && pinnedNotes.includes(contextMenu.noteId) ? "Unpin note" : "Pin note";
       case "rename": return "Rename";
       case "delete-note": return "Delete note";
+      case "delete-draft": return "Delete permanently";
       case "undo": return "Undo";
       case "redo": return "Redo";
       case "cut": return "Cut";
@@ -1368,7 +1397,8 @@ function App() {
       case "open-note": return <StickyNote size={14} />;
       case "toggle-note-pin": return contextMenu?.noteId && pinnedNotes.includes(contextMenu.noteId) ? <PinOff size={14} /> : <Pin size={14} />;
       case "rename": return <Pencil size={14} />;
-      case "delete-note": return <Trash2 size={14} />;
+      case "delete-note":
+      case "delete-draft": return <Trash2 size={14} />;
       case "undo": return <Undo2 size={14} />;
       case "redo": return <Redo2 size={14} />;
       case "cut": return <Scissors size={14} />;
@@ -1487,6 +1517,7 @@ function App() {
         }
         break;
       case "delete-note": if (noteId) await deleteNote(noteId); break;
+      case "delete-draft": if (path) await deleteDraft(path); break;
       case "save": await saveCurrent(false); break;
       case "save-as": await saveCurrent(true); break;
       case "view-document": setEditMode(false); break;
@@ -1558,8 +1589,8 @@ function App() {
           <section className="sidebar-section open-section">
             <button type="button" className="section-label section-toggle" aria-expanded={!collapsedSections.open} onClick={() => toggleSection("open")}>{collapsedSections.open ? <ChevronRight size={11} /> : <ChevronDown size={11} />}In Progress</button>
             {!collapsedSections.open ? <div className="tree">
-              {workspace === "notes" ? inProgressInternalNotes.map(renderNoteRow) : null}
-              {openItems.map(renderProgressRow)}
+              {workspace === "notes" ? inProgressInternalNotes.map((note) => renderNoteRow(note, true)) : null}
+              {openItems.map((item) => renderProgressRow(item, true))}
               {!openItems.length && (workspace !== "notes" || !inProgressInternalNotes.length) ? <div className="section-empty">Empty</div> : null}
             </div> : null}
           </section>
@@ -1673,7 +1704,7 @@ function App() {
             key={action}
             type="button"
             role="menuitem"
-            className={action === "delete-note" ? "context-danger" : undefined}
+            className={action === "delete-note" || action === "delete-draft" ? "context-danger" : undefined}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => void runContextAction(action)}
           >{contextActionIcon(action)}{contextActionLabel(action)}{contextActionShortcut(action) ? <span>{contextActionShortcut(action)}</span> : null}</button>)}

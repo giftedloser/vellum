@@ -15,6 +15,7 @@ export type ContextMenuAction =
   | "toggle-note-pin"
   | "rename"
   | "delete-note"
+  | "delete-draft"
   | "undo"
   | "redo"
   | "cut"
@@ -35,8 +36,8 @@ export type ContextMenuAction =
 export type ContextMenuTarget =
   | { kind: "empty" }
   | { kind: "sidebar-entry"; entryKind: "file" | "directory"; root: boolean; expanded: boolean }
-  | { kind: "sidebar-progress"; saved: boolean }
-  | { kind: "sidebar-note" }
+  | { kind: "sidebar-progress"; saved: boolean; inProgress: boolean }
+  | { kind: "sidebar-note"; inProgress: boolean }
   | {
       kind: "editor";
       documentKind?: DocumentKind;
@@ -75,12 +76,21 @@ export function contextMenuSections(target: ContextMenuTarget): ContextMenuSecti
 
   if (target.kind === "sidebar-progress") {
     return [{
-      actions: ["open-target", ...(!target.saved ? ["rename" as const] : []), ...(target.saved ? ["reveal-target" as const] : []), "toggle-pin"],
+      actions: [
+        "open-target",
+        ...(!target.saved ? ["rename" as const] : []),
+        ...(target.saved ? ["reveal-target" as const] : []),
+        "toggle-pin",
+        // Deleting is offered only where the unsaved copy lives: In Progress.
+        ...(!target.saved && target.inProgress ? ["delete-draft" as const] : []),
+      ],
     }];
   }
 
   if (target.kind === "sidebar-note") {
-    return [{ actions: ["open-note", "rename", "toggle-note-pin", "delete-note"] }];
+    return [{
+      actions: ["open-note", "rename", "toggle-note-pin", ...(target.inProgress ? ["delete-note" as const] : [])],
+    }];
   }
 
   if (target.kind === "editor") {
