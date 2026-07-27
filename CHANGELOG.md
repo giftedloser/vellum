@@ -2,6 +2,17 @@
 
 All notable changes to Vellum are documented in this file.
 
+## [1.0.6] - 2026-07-27
+
+### Fixed
+
+- Right-clicking below the middle of the window opened the menu at the foot of the window instead of at the pointer. The menu now meets the cursor whichever direction it opens, and is given the room actually available in that direction rather than the full window height.
+
+### Changed
+
+- Settings rows are separated by a hairline, so a group no longer reads as one block of text.
+- Reset is detached from the Editor group it appeared to belong to, and its button now uses the same face as every other control in the panel.
+
 ## [1.0.5] - 2026-07-26
 
 ### Added
@@ -135,6 +146,7 @@ All notable changes to Vellum are documented in this file.
 - Kept HTML rendering inside a sandboxed opaque-origin frame.
 - Added JavaScript and Rust dependency audits to continuous integration.
 
+[1.0.6]: https://github.com/giftedloser/vellum/releases/tag/v1.0.6
 [1.0.5]: https://github.com/giftedloser/vellum/releases/tag/v1.0.5
 [1.0.4]: https://github.com/giftedloser/vellum/releases/tag/v1.0.4
 [1.0.3]: https://github.com/giftedloser/vellum/releases/tag/v1.0.3

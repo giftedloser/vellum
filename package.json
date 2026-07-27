@@ -1,7 +1,7 @@
 {
   "name": "vellum",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "A focused desktop workspace for Markdown, HTML, text files, and persistent notes.",
   "license": "MIT",
   "repository": {
