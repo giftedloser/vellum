@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, redo, redoDepth, selectAll, undo, undoDepth } from "@codemirror/commands";
 import { html } from "@codemirror/lang-html";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
@@ -8,6 +8,12 @@ import { closeSearchPanel, highlightSelectionMatches, openSearchPanel, searchKey
 import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, drawSelection, dropCursor, EditorView, keymap, type DecorationSet, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import type { ContextMenuAction } from "./contextMenu";
+
+export type SourceEditorHandle = {
+  contextState(): { selection: boolean; canUndo: boolean; canRedo: boolean } | undefined;
+  runContextAction(action: ContextMenuAction): void;
+};
 
 type Props = {
   value: string;
@@ -16,7 +22,7 @@ type Props = {
   fontSize: number;
   fontFamily: string;
   onChange: (value: string) => void;
-  onViewChange?: (view: EditorView | null) => void;
+  ref: Ref<SourceEditorHandle>;
 };
 
 function resolvedDarkTheme() {
@@ -61,7 +67,17 @@ const markdownBlockStyles = ViewPlugin.fromClass(class {
 
 function languageExtension(language: Props["language"]) {
   if (language === "html") return html({ autoCloseTags: false });
-  return language === "markdown" ? [markdown(), markdownBlockStyles] : [];
+  if (language !== "markdown") return [];
+  return [markdown({
+    extensions: {
+      parseBlock: [{
+        name: "BoundedEditorParagraph",
+        // Lezer parses each paragraph in one step. Break unusually large
+        // paragraphs at source lines so it can yield while highlighting.
+        endLeaf: (_context, _line, leaf) => leaf.content.length >= 32 * 1024,
+      }],
+    },
+  }), markdownBlockStyles];
 }
 
 /* Lucide-style glyphs masked into the search controls. mask-image is used
@@ -350,13 +366,13 @@ function visualTheme(dark: boolean, fontSize: number, fontFamily: string) {
   ];
 }
 
-export default function SourceEditor({ value, language, wrap, fontSize, fontFamily, onChange, onViewChange }: Props) {
+export default function SourceEditor({ value, language, wrap, fontSize, fontFamily, onChange, ref }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
-  const onViewChangeRef = useRef(onViewChange);
   const applyingExternal = useRef(false);
   const initialConfig = useRef({ value, language, wrap, fontSize, fontFamily }).current;
+  const configuredLanguage = useRef(language);
   const languageConfigRef = useRef<Compartment>(null);
   const wrapConfigRef = useRef<Compartment>(null);
   const themeConfigRef = useRef<Compartment>(null);
@@ -368,7 +384,29 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
   const themeConfig = themeConfigRef.current;
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
-  useEffect(() => { onViewChangeRef.current = onViewChange; }, [onViewChange]);
+  useImperativeHandle(ref, () => ({
+    contextState() {
+      const state = view.current?.state;
+      if (!state) return;
+      return {
+        selection: state.selection.ranges.some((range) => !range.empty),
+        canUndo: undoDepth(state) > 0,
+        canRedo: redoDepth(state) > 0,
+      };
+    },
+    runContextAction(action) {
+      const editor = view.current;
+      if (!editor) return;
+      editor.focus();
+      if (action === "undo") undo(editor);
+      else if (action === "redo") redo(editor);
+      else if (action === "select-all") selectAll(editor);
+      else if (action === "find") openSearchPanel(editor);
+      else if (action === "cut" || action === "copy-editor") {
+        document.execCommand(action === "cut" ? "cut" : "copy");
+      }
+    },
+  }), []);
 
   useEffect(() => {
     if (!host.current) return;
@@ -411,13 +449,11 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
     });
 
     view.current = new EditorView({ state, parent: host.current });
-    onViewChangeRef.current?.(view.current);
     view.current.focus();
 
     return () => {
       view.current?.destroy();
       view.current = null;
-      onViewChangeRef.current?.(null);
     };
   }, [initialConfig, languageConfig, themeConfig, wrapConfig]);
 
@@ -430,7 +466,9 @@ export default function SourceEditor({ value, language, wrap, fontSize, fontFami
   }, [value]);
 
   useEffect(() => {
+    if (configuredLanguage.current === language) return;
     view.current?.dispatch({ effects: languageConfig.reconfigure(languageExtension(language)) });
+    configuredLanguage.current = language;
   }, [language, languageConfig]);
 
   useEffect(() => {

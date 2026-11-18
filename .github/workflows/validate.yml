@@ -34,6 +34,14 @@ jobs:
           set -o pipefail
           npm run build 2>&1 | tee frontend-build.log
 
+      - name: Check frontend behavior
+        run: |
+          npm run test:recents
+          npm run test:session
+          npm run test:theme
+          npm run test:context-menus
+          npm run test:settings
+
       - name: Upload frontend failure log
         if: failure() && steps.frontend-build.outcome == 'failure'
         uses: actions/upload-artifact@v4

@@ -17,9 +17,11 @@ assert.deepEqual(rows({ kind: "sidebar-entry", entryKind: "file", root: true, ex
 assert.deepEqual(rows({ kind: "sidebar-entry", entryKind: "directory", root: false, expanded: true }), [
   "toggle-folder", "reveal-target", "toggle-pin",
 ]);
-assert.deepEqual(rows({ kind: "sidebar-progress", saved: true }), ["open-target", "reveal-target", "toggle-pin"]);
-assert.deepEqual(rows({ kind: "sidebar-progress", saved: false }), ["open-target", "rename", "toggle-pin"]);
-assert.deepEqual(rows({ kind: "sidebar-note" }), ["open-note", "rename", "toggle-note-pin", "delete-note"]);
+assert.deepEqual(rows({ kind: "sidebar-progress", saved: true, inProgress: true }), ["open-target", "reveal-target", "toggle-pin"]);
+assert.deepEqual(rows({ kind: "sidebar-progress", saved: false, inProgress: false }), ["open-target", "rename", "toggle-pin"]);
+assert.deepEqual(rows({ kind: "sidebar-progress", saved: false, inProgress: true }), ["open-target", "rename", "toggle-pin", "delete-draft"]);
+assert.deepEqual(rows({ kind: "sidebar-note", inProgress: false }), ["open-note", "rename", "toggle-note-pin"]);
+assert.deepEqual(rows({ kind: "sidebar-note", inProgress: true }), ["open-note", "rename", "toggle-note-pin", "delete-note"]);
 assert.deepEqual(rows({
   kind: "editor",
   documentKind: "markdown",

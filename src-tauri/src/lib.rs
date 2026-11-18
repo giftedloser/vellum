@@ -29,6 +29,15 @@ struct Entry {
     kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     children: Option<Vec<Entry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scan_warning: Option<&'static str>,
+}
+
+#[derive(Default)]
+struct ScanProgress {
+    entry_count: usize,
+    entry_limit_reached: bool,
+    depth_limit_reached: bool,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -107,6 +116,7 @@ fn file_entry(canonical: &Path) -> Result<Entry, String> {
         path: canonical.to_string_lossy().into_owned(),
         kind: "file",
         children: None,
+        scan_warning: None,
     })
 }
 
@@ -114,17 +124,19 @@ fn scan_canonical(
     canonical: &Path,
     depth: usize,
     visited: &mut HashSet<PathBuf>,
-    entry_count: &mut usize,
+    progress: &mut ScanProgress,
 ) -> Result<Entry, String> {
     if depth > MAX_SCAN_DEPTH {
+        progress.depth_limit_reached = true;
         return Err("This folder exceeds Vellum's maximum nesting depth.".into());
     }
-    if *entry_count >= MAX_SCAN_ENTRIES {
+    if progress.entry_count >= MAX_SCAN_ENTRIES {
+        progress.entry_limit_reached = true;
         return Err(
             "This folder contains more entries than Vellum can safely index at once.".into(),
         );
     }
-    *entry_count += 1;
+    progress.entry_count += 1;
 
     if !visited.insert(canonical.to_path_buf()) {
         return Err("A recursive filesystem link was skipped.".into());
@@ -151,8 +163,11 @@ fn scan_canonical(
         if visited.contains(&canonical_child) {
             continue;
         }
-        if let Ok(child) = scan_canonical(&canonical_child, depth + 1, visited, entry_count) {
+        if let Ok(child) = scan_canonical(&canonical_child, depth + 1, visited, progress) {
             children.push(child);
+        }
+        if progress.entry_limit_reached {
+            break;
         }
     }
 
@@ -163,6 +178,7 @@ fn scan_canonical(
         path: canonical.to_string_lossy().into_owned(),
         kind: "directory",
         children: Some(children),
+        scan_warning: None,
     })
 }
 
@@ -391,6 +407,35 @@ mod tests {
     }
 
     #[test]
+    fn scans_report_partial_results_when_a_limit_is_reached() {
+        let folder = unique_sibling(&env::temp_dir(), "scan-limits-test");
+        fs::create_dir(&folder).unwrap();
+        fs::write(folder.join("doc.md"), "fixture").unwrap();
+        let folder = folder.canonicalize().unwrap();
+
+        let mut entry_limited = ScanProgress {
+            entry_count: MAX_SCAN_ENTRIES - 1,
+            ..ScanProgress::default()
+        };
+        let entry = scan_canonical(&folder, 0, &mut HashSet::new(), &mut entry_limited).unwrap();
+        assert!(entry.children.unwrap().is_empty());
+        assert!(entry_limited.entry_limit_reached);
+        assert_eq!(entry_limited.entry_count, MAX_SCAN_ENTRIES);
+
+        let mut depth_limited = ScanProgress::default();
+        let entry = scan_canonical(
+            &folder,
+            MAX_SCAN_DEPTH,
+            &mut HashSet::new(),
+            &mut depth_limited,
+        )
+        .unwrap();
+        assert!(entry.children.unwrap().is_empty());
+        assert!(depth_limited.depth_limit_reached);
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
     fn authorizes_files_and_directory_descendants() {
         let file = PathBuf::from("library/saved.md");
         let directory = PathBuf::from("library/docs");
@@ -488,8 +533,20 @@ fn scan_path(path: String, state: State<'_, AppState>) -> Result<Entry, String> 
         .canonicalize()
         .map_err(|error| error.to_string())?;
     let mut visited = HashSet::new();
-    let mut entry_count = 0;
-    let entry = scan_canonical(&canonical, 0, &mut visited, &mut entry_count)?;
+    let mut progress = ScanProgress::default();
+    let mut entry = scan_canonical(&canonical, 0, &mut visited, &mut progress)?;
+    entry.scan_warning = match (progress.entry_limit_reached, progress.depth_limit_reached) {
+        (true, true) => Some(
+            "Some files were skipped because this folder exceeded the entry and nesting limits.",
+        ),
+        (true, false) => Some(
+            "Some files were skipped because this folder exceeded the 20,000-entry scan limit.",
+        ),
+        (false, true) => {
+            Some("Some files were skipped because this folder exceeded the 32-level nesting limit.")
+        }
+        (false, false) => None,
+    };
     authorize_root(&canonical, &state)?;
     Ok(entry)
 }

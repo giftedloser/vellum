@@ -21,6 +21,8 @@ assert.deepEqual(session.emptySession(), {
 assert.equal(session.noteTitle(notes[0]), "Untitled 2");
 assert.equal(session.noteTitle(notes[1]), "First line");
 assert.equal(session.noteTitle({ ...notes[1], title: "Renamed" }), "Renamed");
+assert.equal(session.contentTitle(" \r\n\t\r\n  First line  \r\nSecond", "Untitled"), "First line");
+assert.equal(session.contentTitle(" \r\n\t\n", "Untitled"), "Untitled");
 assert.equal(session.contentTitle(`  ${"Long title ".repeat(8)}\nSecond`, "Untitled"), `${"Long title ".repeat(4).trim()}…`);
 assert.deepEqual(session.sortNotes(notes).map((note) => note.id), ["a", "b"]);
 assert.deepEqual(session.reorderItems(["a", "b", "c"], "a", "c"), ["b", "a", "c"]);

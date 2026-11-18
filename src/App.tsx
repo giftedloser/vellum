@@ -5,14 +5,12 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { redo, redoDepth, selectAll, undo, undoDepth } from "@codemirror/commands";
-import { openSearchPanel } from "@codemirror/search";
-import type { EditorView } from "@codemirror/view";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { contextMenuSections, type ContextMenuAction, type ContextMenuTarget } from "./contextMenu";
 import FileTypeIcon from "./FileTypeIcon";
 import WindowControls from "./WindowControls";
+import type { SourceEditorHandle } from "./SourceEditor";
 import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, withoutContainedFiles, type DocumentKind, type RecentItem } from "./recent";
 import { fontScaleOptions, interfaceScaleOptions, normalizeSegmentedPreferences, readingWidthOptions, sidebarOpacityOptions, stepValue, type SegmentOption, type SegmentValue } from "./settings";
 import { contentTitle, emptySession, noteTitle, reorderItems, sortNotes, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
@@ -65,6 +63,7 @@ type Entry = {
   path: string;
   kind: "file" | "directory";
   children?: Entry[];
+  scanWarning?: string;
 };
 
 type OpenDocument = {
@@ -393,7 +392,7 @@ function App() {
   const [viewerWarning, setViewerWarning] = useState(false);
   const settingsDialog = useRef<HTMLDialogElement>(null);
   const htmlFrame = useRef<HTMLIFrameElement>(null);
-  const editorView = useRef<EditorView | null>(null);
+  const sourceEditor = useRef<SourceEditorHandle>(null);
   const contextMenuElement = useRef<HTMLDivElement>(null);
   const contextMenuReturnFocus = useRef<HTMLElement | null>(null);
   const contextMenuScroll = useRef<HTMLDivElement>(null);
@@ -405,6 +404,7 @@ function App() {
   const confirmDialog = useRef<HTMLDialogElement>(null);
   const sessionRef = useRef(session);
   const openRequest = useRef(0);
+  const saveInFlight = useRef(false);
   const rootsRef = useRef<Entry[]>([]);
   const activeDocumentRef = useRef<OpenDocument | undefined>(undefined);
   const pinPointer = useRef<{ key: string; pointerId: number; startX: number; startY: number; dragging: boolean } | undefined>(undefined);
@@ -419,7 +419,11 @@ function App() {
   const dirty = Boolean(activeDocument && draftContent !== activeDocument.content);
   const editorKey = activeNote ? `note:${activeNote.id}` : activeDocument ? `document:${activeDocument.path}` : "";
   const editorLanguage = activeNote ? "text" : activeDocument?.kind;
-  const wordCount = draftContent.trim() ? draftContent.trim().split(/\s+/).length : 0;
+  const wordCount = useMemo(() => {
+    if (editorLanguage !== "text") return 0;
+    const trimmed = draftContent.trim();
+    return trimmed ? trimmed.split(/\s+/).length : 0;
+  }, [draftContent, editorLanguage]);
 
   useEffect(() => { rootsRef.current = roots; }, [roots]);
   useEffect(() => { sessionRef.current = session; }, [session]);
@@ -511,64 +515,42 @@ function App() {
     if (typeof selected !== "string") return;
     try {
       const entry = await invoke<Entry>("scan_path", { path: selected });
-      setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
+      setRoots((current) => current.some((item) => item.path === entry.path)
+        ? current.map((item) => item.path === entry.path ? entry : item)
+        : [...current, entry]);
       setFolderWorkspaces((current) => ({ ...current, [entry.path]: targetWorkspace }));
       touchRecent(entry.path, await invoke<number>("path_recent_ms", { path: entry.path }));
       updateSession((current) => ({ ...current, workspace: targetWorkspace }));
+      if (entry.scanWarning) setError(`${entry.name}: ${entry.scanWarning}`);
     } catch (cause) {
       setError(String(cause));
     }
   }, [touchRecent, updateSession]);
 
   const saveCurrent = useCallback(async (saveAs = false) => {
-    if (activeNote) {
-      try {
-        const safeTitle = noteTitle(activeNote).replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").trim().slice(0, 80) || activeNote.fallbackTitle;
-        const selected = await save({
-          defaultPath: `${safeTitle}.txt`,
-          filters: [{ name: "Text", extensions: ["txt"] }],
-        });
-        if (typeof selected !== "string") return;
-        const path = ensureExtension(selected, "text");
-        const modifiedMs = await invoke<number>("write_document", { path, content: draftContent });
-        const entry = await invoke<Entry>("scan_path", { path });
-        setActiveNoteId(undefined);
-        setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: "text", modifiedMs });
-        setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
-        if (pinnedNotes.includes(activeNote.id)) {
-          setPinned((current) => current.includes(entry.path) ? current : [...current, entry.path]);
-          setPinOrder((current) => current.map((key) => key === pinKey("note", activeNote.id) ? pinKey("document", entry.path) : key));
-        }
-        setPinnedNotes((current) => current.filter((id) => id !== activeNote.id));
-        updateSession((current) => ({
-          ...current,
-          notes: current.notes.filter((note) => note.id !== activeNote.id),
-          documents: current.documents.filter((document) => document.path !== entry.path),
-          active: { type: "document", path: entry.path },
-          workspace: "notes",
-        }));
-        touchRecent(entry.path, modifiedMs);
-      } catch (cause) {
-        setError(String(cause));
-      }
-      return;
-    }
-    if (!activeDocument) return;
+    if (saveInFlight.current || (!activeDocument && !activeNote)) return;
+    const selection = openRequest.current;
+    saveInFlight.current = true;
     try {
-      let path = activeDocument.path;
-      if (activeDocument.draft || saveAs) {
-        const filter = activeDocument.kind === "html"
+      const kind = activeDocument?.kind ?? "text";
+      let path: string;
+      if (!activeDocument || activeDocument.draft || saveAs) {
+        const filter = kind === "html"
           ? { name: "HTML", extensions: ["html", "htm"] }
-          : activeDocument.kind === "markdown"
+          : kind === "markdown"
             ? { name: "Markdown", extensions: ["md", "markdown"] }
             : { name: "Text", extensions: ["txt"] };
+        const noteName = activeNote
+          ? noteTitle(activeNote).replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").trim().slice(0, 80) || activeNote.fallbackTitle
+          : undefined;
         const selected = await save({
-          defaultPath: activeDocument.name,
+          defaultPath: noteName ? `${noteName}.txt` : activeDocument?.name,
           filters: [filter],
         });
         if (typeof selected !== "string") return;
-        path = ensureExtension(selected, activeDocument.kind);
+        path = ensureExtension(selected, kind);
       } else {
+        path = activeDocument.path;
         const modifiedMs = await invoke<number>("document_modified_ms", { path });
         if (modifiedMs !== activeDocument.modifiedMs && !await askConfirm({
           title: "Overwrite newer file?",
@@ -580,26 +562,62 @@ function App() {
 
       const modifiedMs = await invoke<number>("write_document", { path, content: draftContent });
       const entry = await invoke<Entry>("scan_path", { path });
-      const assetBaseUrl = documentKind(entry.path) === "html" ? await invoke<string>("document_asset_base", { path: entry.path }) : undefined;
-      setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: documentKind(entry.path), modifiedMs, assetBaseUrl });
+      const savedKind = documentKind(entry.path);
+      const assetBaseUrl = savedKind === "html" ? await invoke<string>("document_asset_base", { path: entry.path }) : undefined;
+      const stillSelected = selection === openRequest.current;
+      const destinationHasDraft = entry.path !== activeDocument?.path && sessionRef.current.documents.some(
+        (document) => document.path === entry.path && document.content !== draftContent,
+      );
+      const selectDestination = stillSelected && !destinationHasDraft;
+      const currentNote = activeNote && sessionRef.current.notes.find((note) => note.id === activeNote.id);
+      const removeNote = currentNote && !destinationHasDraft && (stillSelected || currentNote.content === draftContent);
+      const sourceRecovery = activeDocument && sessionRef.current.documents.find((item) => item.path === activeDocument.path);
+      const keepSourceDraft = !stillSelected && sourceRecovery && sourceRecovery.content !== draftContent;
+      if (selectDestination) {
+        setActiveNoteId(undefined);
+        setActiveDocument({ path: entry.path, name: entry.name, content: draftContent, kind: savedKind, modifiedMs, assetBaseUrl });
+      } else if (stillSelected && destinationHasDraft) {
+        setError(`Saved ${entry.name}. Its earlier unsaved changes are still in In Progress.`);
+      }
       setRoots((current) => current.some((item) => item.path === entry.path) ? current : [...current, entry]);
-      if (pinned.includes(activeDocument.path)) {
-        setPinned((current) => [...current.filter((path) => path !== activeDocument.path && path !== entry.path), entry.path]);
-        setPinOrder((current) => current.map((key) => key === pinKey("document", activeDocument.path) ? pinKey("document", entry.path) : key));
+      if (removeNote && activeNote) {
+        if (pinnedNotes.includes(activeNote.id)) {
+          setPinned((current) => current.includes(entry.path) ? current : [...current, entry.path]);
+          setPinOrder((current) => current.map((key) => key === pinKey("note", activeNote.id) ? pinKey("document", entry.path) : key));
+        }
+        setPinnedNotes((current) => current.filter((id) => id !== activeNote.id));
+      }
+      if (activeDocument && activeDocument.path !== entry.path && !keepSourceDraft && !destinationHasDraft) {
+        setPinned((current) => current.includes(activeDocument.path)
+          ? [...current.filter((path) => path !== activeDocument.path && path !== entry.path), entry.path]
+          : current);
+        setPinOrder((current) => [...new Set(current.map((key) =>
+          key === pinKey("document", activeDocument.path) ? pinKey("document", entry.path) : key))]);
       }
       updateSession((current) => ({
         ...current,
-        documents: current.documents.filter((document) => document.path !== activeDocument.path && document.path !== entry.path),
-        active: { type: "document", path: entry.path },
-        workspace: documentKind(entry.path) === "text" ? "notes" : "documents",
+        notes: removeNote && activeNote ? current.notes.filter((note) => note.id !== activeNote.id) : current.notes,
+        documents: current.documents.flatMap((document) => {
+          if (document.path !== activeDocument?.path) {
+            return document.path === entry.path && document.content === draftContent ? [] : [document];
+          }
+          if (destinationHasDraft) return [document];
+          if (document.content === draftContent || selectDestination) return [];
+          return [document.path === entry.path ? { ...document, baseModifiedMs: modifiedMs } : document];
+        }),
+        active: selectDestination ? { type: "document", path: entry.path } : current.active,
+        workspace: selectDestination ? (savedKind === "text" ? "notes" : "documents") : current.workspace,
       }));
       touchRecent(entry.path, modifiedMs);
     } catch (cause) {
       setError(String(cause));
+    } finally {
+      saveInFlight.current = false;
     }
-  }, [activeDocument, activeNote, draftContent, pinned, pinnedNotes, touchRecent, updateSession]);
+  }, [activeDocument, activeNote, draftContent, pinnedNotes, touchRecent, updateSession, askConfirm]);
 
   const newDocument = useCallback((kind: DocumentKind) => {
+    openRequest.current += 1;
     const content = kind === "html"
       ? '<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Untitled</title>\n</head>\n<body>\n  \n</body>\n</html>\n'
       : "";
@@ -686,6 +704,7 @@ function App() {
     setPinnedNotes((current) => current.filter((item) => item !== id));
     setPinOrder((current) => current.filter((key) => key !== pinKey("note", id)));
     if (activeNoteId === id) {
+      openRequest.current += 1;
       setActiveNoteId(undefined);
       setDraftContent("");
       setEditMode(false);
@@ -710,6 +729,7 @@ function App() {
     setPinned((current) => current.filter((item) => item !== path));
     setPinOrder((current) => current.filter((key) => key !== pinKey("document", path)));
     if (activeDocument?.path === path) {
+      openRequest.current += 1;
       setActiveDocument(undefined);
       setDraftContent("");
       setEditMode(false);
@@ -789,7 +809,15 @@ function App() {
         if (activeRecovery?.draft) openDraft(activePath);
         else await openDocument(activePath);
       }
-      if (!cancelled) documentRestored.current = true;
+      if (!cancelled) {
+        documentRestored.current = true;
+        const incomplete = restored.filter((entry) => entry.scanWarning);
+        if (incomplete.length === 1) {
+          setError((current) => current ?? `${incomplete[0].name}: ${incomplete[0].scanWarning}`);
+        } else if (incomplete.length > 1) {
+          setError((current) => current ?? `Some files were skipped in ${incomplete.length} folders that exceeded Vellum's scan limits.`);
+        }
+      }
     };
     void restore();
     return () => { cancelled = true; };
@@ -1219,17 +1247,15 @@ function App() {
     const menuX = event.clientX || rect?.left || 8;
     const menuY = Math.max(8, event.clientY || rect?.bottom || 8);
     let next = request;
-    if (!next && element?.closest(".source-editor") && editorView.current) {
-      const view = editorView.current;
+    const editorState = !next && element?.closest(".source-editor") ? sourceEditor.current?.contextState() : undefined;
+    if (editorState) {
       next = {
         target: {
           kind: "editor",
           documentKind: activeNote ? undefined : activeDocument?.kind,
           saved: Boolean(activeDocument && !activeDocument.draft),
           dirty,
-          selection: view.state.selection.ranges.some((range) => !range.empty),
-          canUndo: undoDepth(view.state) > 0,
-          canRedo: redoDepth(view.state) > 0,
+          ...editorState,
         },
         path: activeDocument?.draft ? undefined : activeDocument?.path,
       };
@@ -1461,27 +1487,12 @@ function App() {
     }
   }
 
-  function runEditorAction(action: ContextMenuAction) {
-    const view = editorView.current;
-    if (!view) return;
-    dismissContextMenu(false);
-    view.focus();
-    if (action === "undo") undo(view);
-    else if (action === "redo") redo(view);
-    else if (action === "select-all") selectAll(view);
-    else if (action === "find") openSearchPanel(view);
-    else if (action === "cut" || action === "copy-editor") {
-      // ponytail: WebView2 blocks programmatic paste. Add
-      // tauri-plugin-clipboard-manager only if Paste becomes required.
-      document.execCommand(action === "cut" ? "cut" : "copy");
-    }
-  }
-
   async function runContextAction(action: ContextMenuAction) {
     const menu = contextMenu;
     if (!menu) return;
     if (["undo", "redo", "cut", "copy-editor", "select-all", "find"].includes(action)) {
-      runEditorAction(action);
+      dismissContextMenu(false);
+      sourceEditor.current?.runContextAction(action);
       return;
     }
     const path = menu.path;
@@ -1620,7 +1631,7 @@ function App() {
             {!hasActiveItem ? (
               <div className="welcome"><div className="welcome-content"><h1>Vellum</h1><p>A quiet place to read, edit, and organize documents and notes.</p><div className="welcome-actions"><button type="button" onClick={choosePath}>Open a file</button><button type="button" className="secondary" onClick={() => newDocument("text")}>New text file</button></div><div className="welcome-shortcuts"><span><kbd>Ctrl O</kbd> Open file</span><span><kbd>Ctrl N</kbd> New text file</span></div></div></div>
             ) : activeNote || activeDocument?.kind === "text" || editMode ? (
-              <div className="editor-shell"><Suspense fallback={<div className="welcome"><p>Loading editor…</p></div>}><SourceEditor key={editorKey} value={draftContent} language={editorLanguage!} wrap={preferences.editorWrap} fontSize={preferences.editorFontSize} fontFamily={editorFonts[preferences.editorFont]} onChange={changeDraft} onViewChange={(view) => { editorView.current = view; }} /></Suspense></div>
+              <div className="editor-shell"><Suspense fallback={<div className="welcome"><p>Loading editor…</p></div>}><SourceEditor key={editorKey} ref={sourceEditor} value={draftContent} language={editorLanguage!} wrap={preferences.editorWrap} fontSize={preferences.editorFontSize} fontFamily={editorFonts[preferences.editorFont]} onChange={changeDraft} /></Suspense></div>
             ) : activeDocument?.kind === "markdown" ? (
               <article key={activeDocument.path} className="document markdown-body" dangerouslySetInnerHTML={{ __html: renderedMarkdown }} />
             ) : activeDocument ? (

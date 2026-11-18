@@ -37,9 +37,19 @@ export function emptySession(): SessionState {
 }
 
 export function contentTitle(content: string, fallback: string) {
-  const firstLine = content.split(/\r?\n/).find((line) => line.trim())?.trim();
-  const clipped = firstLine?.slice(0, 48).replace(/\s+\S*$/, "");
-  return firstLine && firstLine.length > 48 ? `${clipped || firstLine.slice(0, 48)}…` : firstLine || fallback;
+  let start = 0;
+  while (start < content.length) {
+    const end = content.indexOf("\n", start);
+    const line = content.slice(start, end === -1 ? undefined : end).trim();
+    if (line) {
+      if (line.length <= 48) return line;
+      const prefix = line.slice(0, 48);
+      return `${prefix.replace(/\s+\S*$/, "") || prefix}…`;
+    }
+    if (end === -1) break;
+    start = end + 1;
+  }
+  return fallback;
 }
 
 export function noteTitle(note: Note) {
