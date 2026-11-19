@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env, fs,
     io::Write,
     path::{Path, PathBuf},
@@ -17,7 +17,9 @@ const MAX_SCAN_ENTRIES: usize = 20_000;
 
 #[derive(Default)]
 struct AppState {
-    allowed_roots: Mutex<Vec<PathBuf>>,
+    // The entry type is known when a root is authorized. Never stat another
+    // root while holding this lock or while opening an unrelated document.
+    allowed_roots: Mutex<HashMap<PathBuf, bool>>,
     asset_roots: Mutex<Vec<PathBuf>>,
 }
 
@@ -154,7 +156,7 @@ fn scan_canonical(
         .flatten()
     {
         let path = entry.path();
-        if !path.is_dir() && !supported(&path) {
+        if !supported(&path) && !path.is_dir() {
             continue;
         }
         let Ok(canonical_child) = path.canonicalize() else {
@@ -182,33 +184,29 @@ fn scan_canonical(
     })
 }
 
-fn authorize_root(canonical: &Path, state: &State<'_, AppState>) -> Result<(), String> {
+fn authorize_root(canonical: &Path, directory: bool, state: &AppState) -> Result<(), String> {
     let mut roots = state
         .allowed_roots
         .lock()
         .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
-    if !roots.contains(&canonical.to_path_buf()) {
-        roots.push(canonical.to_path_buf());
-    }
+    roots.insert(canonical.to_path_buf(), directory);
     Ok(())
 }
 
-fn is_authorized(path: &Path, roots: &[PathBuf]) -> bool {
-    roots.iter().any(|root| {
-        if root.is_file() {
-            path == root
-        } else {
-            path.starts_with(root)
-        }
+fn is_authorized(path: &Path, roots: &HashMap<PathBuf, bool>) -> bool {
+    path.ancestors().any(|root| {
+        roots
+            .get(root)
+            .is_some_and(|directory| *directory || root == path)
     })
 }
 
 fn asset_root_for_document(
     path: &Path,
-    allowed_roots: &[PathBuf],
+    allowed_roots: &HashMap<PathBuf, bool>,
     asset_roots: &mut Vec<PathBuf>,
 ) -> Result<usize, String> {
-    if !path.is_file() || !supported(path) || !is_authorized(path, allowed_roots) {
+    if !is_authorized(path, allowed_roots) {
         return Err("This document is not authorized for local assets.".into());
     }
     let root = path
@@ -368,6 +366,14 @@ fn session_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| error.to_string())
 }
 
+async fn run_file_io<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,10 +445,11 @@ mod tests {
     fn authorizes_files_and_directory_descendants() {
         let file = PathBuf::from("library/saved.md");
         let directory = PathBuf::from("library/docs");
-        let roots = [file.clone(), directory.clone()];
+        let roots = HashMap::from([(file.clone(), false), (directory.clone(), true)]);
 
         assert!(is_authorized(&file, &roots));
         assert!(is_authorized(&directory.join("nested/page.html"), &roots));
+        assert!(!is_authorized(&file.join("nested/page.html"), &roots));
         assert!(!is_authorized(Path::new("library/other.md"), &roots));
     }
 
@@ -465,9 +472,8 @@ mod tests {
         let document = document.canonicalize().unwrap();
 
         let mut asset_roots = Vec::new();
-        let root =
-            asset_root_for_document(&document, std::slice::from_ref(&document), &mut asset_roots)
-                .unwrap();
+        let allowed_roots = HashMap::from([(document.clone(), false)]);
+        let root = asset_root_for_document(&document, &allowed_roots, &mut asset_roots).unwrap();
         let resolved = resolve_asset(&format!("/{root}/menu.js"), &asset_roots).unwrap();
 
         assert_eq!(
@@ -509,120 +515,149 @@ fn save_session(session: String, app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn startup_document(state: State<'_, AppState>) -> Result<Option<Entry>, String> {
-    for argument in env::args_os().skip(1) {
-        let path = PathBuf::from(argument);
-        if !supported(&path) {
-            continue;
+async fn startup_document(app: AppHandle) -> Result<Option<Entry>, String> {
+    run_file_io(move || {
+        let state = app.state::<AppState>();
+        for argument in env::args_os().skip(1) {
+            let path = PathBuf::from(argument);
+            if !supported(&path) {
+                continue;
+            }
+            let canonical = match path.canonicalize() {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            let entry = file_entry(&canonical)?;
+            authorize_root(&canonical, false, &state)?;
+            return Ok(Some(entry));
         }
-        let canonical = match path.canonicalize() {
-            Ok(value) => value,
-            Err(_) => continue,
+
+        Ok(None)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn scan_path(path: String, app: AppHandle) -> Result<Entry, String> {
+    run_file_io(move || {
+        let state = app.state::<AppState>();
+        let canonical = PathBuf::from(path)
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
+        let mut visited = HashSet::new();
+        let mut progress = ScanProgress::default();
+        let mut entry = scan_canonical(&canonical, 0, &mut visited, &mut progress)?;
+        entry.scan_warning = match (progress.entry_limit_reached, progress.depth_limit_reached) {
+            (true, true) => Some(
+                "Some files were skipped because this folder exceeded the entry and nesting limits.",
+            ),
+            (true, false) => Some(
+                "Some files were skipped because this folder exceeded the 20,000-entry scan limit.",
+            ),
+            (false, true) => {
+                Some("Some files were skipped because this folder exceeded the 32-level nesting limit.")
+            }
+            (false, false) => None,
         };
-        let entry = file_entry(&canonical)?;
-        authorize_root(&canonical, &state)?;
-        return Ok(Some(entry));
-    }
-
-    Ok(None)
+        authorize_root(&canonical, entry.kind == "directory", &state)?;
+        Ok(entry)
+    })
+    .await
 }
 
 #[tauri::command]
-fn scan_path(path: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    let canonical = PathBuf::from(path)
-        .canonicalize()
-        .map_err(|error| error.to_string())?;
-    let mut visited = HashSet::new();
-    let mut progress = ScanProgress::default();
-    let mut entry = scan_canonical(&canonical, 0, &mut visited, &mut progress)?;
-    entry.scan_warning = match (progress.entry_limit_reached, progress.depth_limit_reached) {
-        (true, true) => Some(
-            "Some files were skipped because this folder exceeded the entry and nesting limits.",
-        ),
-        (true, false) => Some(
-            "Some files were skipped because this folder exceeded the 20,000-entry scan limit.",
-        ),
-        (false, true) => {
-            Some("Some files were skipped because this folder exceeded the 32-level nesting limit.")
+async fn read_document(path: String, app: AppHandle) -> Result<String, String> {
+    run_file_io(move || {
+        let state = app.state::<AppState>();
+        let canonical = PathBuf::from(path)
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
+
+        if !supported(&canonical) || !canonical.is_file() {
+            return Err("Unsupported document type.".into());
         }
-        (false, false) => None,
-    };
-    authorize_root(&canonical, &state)?;
-    Ok(entry)
+
+        let roots = state
+            .allowed_roots
+            .lock()
+            .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
+        if !is_authorized(&canonical, &roots) {
+            return Err("This document is not in the active Vellum library.".into());
+        }
+        drop(roots);
+
+        let metadata = fs::metadata(&canonical).map_err(|error| error.to_string())?;
+        if metadata.len() > MAX_DOCUMENT_BYTES {
+            return Err("This document is larger than Vellum's 32 MB safety limit.".into());
+        }
+
+        fs::read_to_string(canonical).map_err(|error| error.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-fn read_document(path: String, state: State<'_, AppState>) -> Result<String, String> {
-    let canonical = PathBuf::from(path)
-        .canonicalize()
-        .map_err(|error| error.to_string())?;
-
-    if !supported(&canonical) || !canonical.is_file() {
-        return Err("Unsupported document type.".into());
-    }
-
-    let roots = state
-        .allowed_roots
-        .lock()
-        .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
-    if !is_authorized(&canonical, &roots) {
-        return Err("This document is not in the active Vellum library.".into());
-    }
-    drop(roots);
-
-    let metadata = fs::metadata(&canonical).map_err(|error| error.to_string())?;
-    if metadata.len() > MAX_DOCUMENT_BYTES {
-        return Err("This document is larger than Vellum's 32 MB safety limit.".into());
-    }
-
-    fs::read_to_string(canonical).map_err(|error| error.to_string())
+async fn document_asset_base(path: String, app: AppHandle) -> Result<String, String> {
+    run_file_io(move || {
+        let state = app.state::<AppState>();
+        let canonical = PathBuf::from(path)
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
+        if !canonical.is_file() || !supported(&canonical) {
+            return Err("This document is not authorized for local assets.".into());
+        }
+        let allowed_roots = state
+            .allowed_roots
+            .lock()
+            .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
+        let mut asset_roots = state
+            .asset_roots
+            .lock()
+            .map_err(|_| "Vellum could not access its asset authorization state.".to_string())?;
+        let index = asset_root_for_document(&canonical, &allowed_roots, &mut asset_roots)?;
+        Ok(format!("vellum-asset://localhost/{index}/"))
+    })
+    .await
 }
 
 #[tauri::command]
-fn document_asset_base(path: String, state: State<'_, AppState>) -> Result<String, String> {
-    let canonical = PathBuf::from(path)
-        .canonicalize()
-        .map_err(|error| error.to_string())?;
-    let allowed_roots = state
-        .allowed_roots
-        .lock()
-        .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
-    let mut asset_roots = state
-        .asset_roots
-        .lock()
-        .map_err(|_| "Vellum could not access its asset authorization state.".to_string())?;
-    let index = asset_root_for_document(&canonical, &allowed_roots, &mut asset_roots)?;
-    Ok(format!("vellum-asset://localhost/{index}/"))
+async fn document_modified_ms(path: String, app: AppHandle) -> Result<u64, String> {
+    run_file_io(move || {
+        let state = app.state::<AppState>();
+        let canonical = PathBuf::from(path)
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
+        let roots = state
+            .allowed_roots
+            .lock()
+            .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
+        if !is_authorized(&canonical, &roots) {
+            return Err("This document is not in the active Vellum library.".into());
+        }
+        drop(roots);
+        modified_ms(&canonical)
+    })
+    .await
 }
 
 #[tauri::command]
-fn document_modified_ms(path: String, state: State<'_, AppState>) -> Result<u64, String> {
-    let canonical = PathBuf::from(path)
-        .canonicalize()
-        .map_err(|error| error.to_string())?;
-    let roots = state
-        .allowed_roots
-        .lock()
-        .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
-    if !is_authorized(&canonical, &roots) {
-        return Err("This document is not in the active Vellum library.".into());
-    }
-    modified_ms(&canonical)
-}
-
-#[tauri::command]
-fn path_recent_ms(path: String, state: State<'_, AppState>) -> Result<u64, String> {
-    let canonical = PathBuf::from(path)
-        .canonicalize()
-        .map_err(|error| error.to_string())?;
-    let roots = state
-        .allowed_roots
-        .lock()
-        .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
-    if !is_authorized(&canonical, &roots) {
-        return Err("This path is not in the active Vellum library.".into());
-    }
-    recent_ms(&canonical)
+async fn path_recent_ms(path: String, app: AppHandle) -> Result<u64, String> {
+    run_file_io(move || {
+        let state = app.state::<AppState>();
+        let canonical = PathBuf::from(path)
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
+        let roots = state
+            .allowed_roots
+            .lock()
+            .map_err(|_| "Vellum could not access its document authorization state.".to_string())?;
+        if !is_authorized(&canonical, &roots) {
+            return Err("This path is not in the active Vellum library.".into());
+        }
+        drop(roots);
+        recent_ms(&canonical)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -654,6 +689,9 @@ fn write_document(
         let canonical = destination
             .canonicalize()
             .map_err(|error| error.to_string())?;
+        if !canonical.is_file() {
+            return Err("The selected save location is not a regular file.".into());
+        }
         let roots = state
             .allowed_roots
             .lock()
@@ -668,7 +706,7 @@ fn write_document(
     let canonical = destination
         .canonicalize()
         .map_err(|error| error.to_string())?;
-    authorize_root(&canonical, &state)?;
+    authorize_root(&canonical, false, &state)?;
     modified_ms(&canonical)
 }
 
@@ -693,7 +731,7 @@ pub fn run() {
                 }
                 let canonical = path.canonicalize().ok()?;
                 let entry = file_entry(&canonical).ok()?;
-                authorize_root(&canonical, &state).ok()?;
+                authorize_root(&canonical, false, &state).ok()?;
                 Some(entry)
             });
             if let Some(entry) = opened {

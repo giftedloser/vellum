@@ -139,7 +139,6 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   position: fixed;
   z-index: 35;
   top: 0;
-  right: 0;
   left: 0;
   height: 28px;
   pointer-events: auto;
@@ -246,30 +245,43 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 .sidebar-collapsed .brand-rest { max-width: 0; opacity: 0; transform: translateX(-6px); }
 
-/* Window controls sit after the generic sidebar button rule so they win
-   on source order at equal specificity, without !important. */
-.sidebar .sidebar-window-controls { display: flex; height: 32px; margin-right: 2px; flex: none; }
+.window-controls {
+  position: fixed;
+  z-index: 36;
+  top: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  opacity: 0;
+  pointer-events: none;
+}
 
-.sidebar .sidebar-window-controls button {
-  width: 36px;
-  height: 32px;
+.window-controls.revealed,
+.window-controls:has(:focus-visible) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.window-controls button {
+  width: 100%;
+  height: 100%;
   display: grid;
   place-items: center;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   background: transparent;
+  -webkit-tap-highlight-color: transparent;
   transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, transform 80ms ease;
 }
 
-.sidebar .sidebar-window-controls button:hover { color: var(--text-body); background: var(--hover); }
-.sidebar .sidebar-window-controls button:active { transform: scale(.96); }
+.window-controls button:hover { color: var(--text-body); background: var(--hover); }
+.window-controls button:active { transform: scale(.96); }
 
 /* Inset ring: these sit flush against the title bar edge, where an outset
    ring would be clipped. */
-.sidebar .sidebar-window-controls button:focus-visible { outline-offset: -2px; }
-.sidebar .sidebar-window-controls .close:hover { color: #fff; background: #c43b32; }
-.sidebar-collapsed .sidebar-window-controls { display: none; }
+.window-controls button:focus-visible { outline-offset: -2px; }
+.window-controls .close:hover { color: #fff; background: #c43b32; }
 
 .sidebar-section {
   min-height: 0;

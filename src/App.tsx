@@ -1,7 +1,6 @@
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -9,11 +8,12 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { contextMenuSections, type ContextMenuAction, type ContextMenuTarget } from "./contextMenu";
 import FileTypeIcon from "./FileTypeIcon";
-import WindowControls from "./WindowControls";
+import WindowControls, { windowControlsFrameEvents, windowControlsWidth } from "./WindowControls";
 import type { SourceEditorHandle } from "./SourceEditor";
-import { collapsedRecentCount, documentKind, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, withoutContainedFiles, type DocumentKind, type RecentItem } from "./recent";
+import { collapsedRecentCount, documentKind, maxRecentCount, sidebarLabel, touchRecent as moveRecentToFront, visibleRecents, withoutContainedFiles, type DocumentKind, type RecentItem } from "./recent";
 import { fontScaleOptions, interfaceScaleOptions, normalizeSegmentedPreferences, readingWidthOptions, sidebarOpacityOptions, stepValue, type SegmentOption, type SegmentValue } from "./settings";
-import { contentTitle, emptySession, noteTitle, reorderItems, sortNotes, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
+import { contentTitle, noteTitle, reorderItems, sortNotes, updateDocumentRecovery, type DocumentRecovery, type Note, type SessionState, type Workspace } from "./session";
+import { applyInterfaceScale, type StartupState } from "./startup";
 import {
   AArrowDown,
   AArrowUp,
@@ -121,11 +121,11 @@ const allowedExtensions = ["md", "markdown", "html", "htm", "txt"];
 const pinKey = (kind: "document" | "note", id: string) => `${kind}:${id}`;
 const defaultPreferences: Preferences = {
   theme: "system",
-  interfaceScale: 100,
+  interfaceScale: interfaceScaleOptions[1].value,
   viewerZoom: 100,
-  sidebarOpacity: 92,
+  sidebarOpacity: sidebarOpacityOptions[1].value,
   readingWidth: 880,
-  fontScale: 100,
+  fontScale: fontScaleOptions[1].value,
   lineHeight: 170,
   editorWrap: true,
   editorFontSize: 14,
@@ -165,7 +165,7 @@ const editorFontAliases: Record<string, EditorFont> = {
   "IBM Plex Mono": "Cascadia Mono",
 };
 
-function readPreferences(): Preferences {
+export function readPreferences(): Preferences {
   const stored = readStored<Partial<Omit<Preferences, "editorFont">> & { editorFont?: string }>("vellum.preferences:v2", readStored("vellum.preferences:v1", {}));
   return normalizeSegmentedPreferences({ ...defaultPreferences, ...stored, editorFont: editorFontAliases[stored.editorFont ?? ""] ?? defaultPreferences.editorFont });
 }
@@ -240,7 +240,7 @@ function filterEntryForWorkspace(entry: Entry, workspace: Workspace): Entry | un
   }) };
 }
 
-const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i"),warn=()=>parent.postMessage({type:"vellum-viewer-warning"},"*");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measure);addEventListener("resize",measure);addEventListener("error",warn,true);addEventListener("unhandledrejection",warn);addEventListener("message",event=>{if(event.data?.type==="vellum-measure")measure();if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY,selectedText:String(getSelection()?.toString()||"")},"*")});addEventListener("keydown",event=>{const key=event.key.toLowerCase();if(event.key==="F3"||((event.ctrlKey||event.metaKey)&&(key==="f"||key==="g")))event.preventDefault();if(event.key==="Escape")parent.postMessage({type:"vellum-viewer-escape"},"*")},true);addEventListener("pointerdown",()=>parent.postMessage({type:"vellum-viewer-pointerdown"},"*"),true)})()`;
+const viewerScript = `(()=>{const root=document.documentElement,indicator=document.createElement("i"),warn=()=>parent.postMessage({type:"vellum-viewer-warning"},"*");indicator.className="vellum-scroll-indicator";root.append(indicator);let timer,frame=0,measureFrame=0,fit=false;const measure=()=>{const previous=root.style.zoom;root.style.zoom="1";const contentWidth=Math.max(root.scrollWidth,document.body?.scrollWidth||0);root.style.zoom=previous;parent.postMessage({type:"vellum-viewer-metrics",contentWidth,viewportWidth:innerWidth},"*")};const measureFit=()=>{if(fit&&!measureFrame)measureFrame=requestAnimationFrame(()=>{measureFrame=0;if(fit)measure()})};const setZoom=value=>{const zoom=Number(value);if(Number.isFinite(zoom))root.style.zoom=String(Math.max(.5,Math.min(2,zoom/100)))};const renderScroll=target=>{frame=0;const viewport=target===document.scrollingElement,rect=viewport?{top:0,right:innerWidth,height:innerHeight}:target.getBoundingClientRect(),height=Math.max(18,rect.height*rect.height/target.scrollHeight),travel=Math.max(0,rect.height-height),progress=target.scrollTop/Math.max(1,target.scrollHeight-target.clientHeight);indicator.style.top=(rect.top+travel*progress)+"px";indicator.style.left=(rect.right-2)+"px";indicator.style.height=height+"px";indicator.style.opacity=1;clearTimeout(timer);timer=setTimeout(()=>indicator.style.opacity=0,500)};addEventListener("load",measureFit);addEventListener("resize",measureFit);addEventListener("error",warn,true);addEventListener("unhandledrejection",warn);addEventListener("message",event=>{if(event.data?.type==="vellum-fit"){fit=event.data.enabled===true;measureFit()}if(event.data?.type==="vellum-zoom")setZoom(event.data.zoom)});addEventListener("scroll",event=>{const target=event.target===document?document.scrollingElement:event.target;if(!target||frame)return;frame=requestAnimationFrame(()=>renderScroll(target))},true);addEventListener("contextmenu",event=>{event.preventDefault();parent.postMessage({type:"vellum-context-menu",x:event.clientX,y:event.clientY,selectedText:String(getSelection()?.toString()||"")},"*")});addEventListener("keydown",event=>{const key=event.key.toLowerCase();if(event.key==="F3"||((event.ctrlKey||event.metaKey)&&(key==="f"||key==="g")))event.preventDefault();if(event.key==="Escape")parent.postMessage({type:"vellum-viewer-escape"},"*")},true);addEventListener("pointerdown",()=>parent.postMessage({type:"vellum-viewer-pointerdown"},"*"),true);${windowControlsFrameEvents}})()`;
 
 function prepareHtml(content: string, theme: ResolvedTheme, baseUrl?: string) {
   const thumb = theme === "dark" ? "oklch(1 0 0 / .24)" : "oklch(0 0 0 / .28)";
@@ -358,22 +358,23 @@ function NumericStepper({ label, value, min, max, step, suffix, onChange }: {
   );
 }
 
-function App() {
+function App({ initialPreferences, startup }: { initialPreferences: Preferences; startup: StartupState }) {
   const [roots, setRoots] = useState<Entry[]>([]);
   const [recent, setRecent] = useState<RecentItem[]>(() => readStored("vellum.recent:v2", []));
+  const initialRecent = useRef(recent);
   const [pinned, setPinned] = useState<string[]>(() => readStored("vellum.pinned:v2", []));
   const [pinnedNotes, setPinnedNotes] = useState<string[]>(() => readStored("vellum.pinnedNotes:v1", []));
   const [pinOrder, setPinOrder] = useState<string[]>(() => readStored("vellum.pinOrder:v1", []));
   const [folderWorkspaces, setFolderWorkspaces] = useState<Record<string, Workspace>>(() => readStored("vellum.folderWorkspaces:v1", {}));
-  const [session, setSession] = useState<SessionState>(emptySession);
+  const [session, setSession] = useState(startup.session);
   const [activeDocument, setActiveDocument] = useState<OpenDocument>();
   const [activeNoteId, setActiveNoteId] = useState<string>();
   const [draftContent, setDraftContent] = useState("");
   const [editMode, setEditMode] = useState(false);
   // Opening a file from Explorer is a read-first launch, so it starts with the
   // sidebar collapsed and never writes that back over the saved preference.
-  const startupLaunch = useRef(Boolean(localStorage.getItem("vellum.startup-document:v1")));
-  const [sidebarOpen, setSidebarOpen] = useState(() => startupLaunch.current ? false : readStored("vellum.sidebarOpen:v1", true));
+  const startupLaunch = Boolean(startup.documentPath);
+  const [sidebarOpen, setSidebarOpen] = useState(() => startupLaunch ? false : readStored("vellum.sidebarOpen:v1", true));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest>();
   const [renamingItem, setRenamingItem] = useState<RenamingItem>();
@@ -386,9 +387,9 @@ function App() {
   const [collapsedSections, setCollapsedSections] = useState<Partial<Record<CollapsibleSection, boolean>>>(() => readStored("vellum.collapsedSections:v1", {}));
   const [viewerMetrics, setViewerMetrics] = useState<ViewerMetrics>();
   const [fitToWidth, setFitToWidth] = useState(false);
-  const [preferences, setPreferences] = useState<Preferences>(readPreferences);
+  const [preferences, setPreferences] = useState(initialPreferences);
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState(startup.sessionError);
   const [viewerWarning, setViewerWarning] = useState(false);
   const settingsDialog = useRef<HTMLDialogElement>(null);
   const htmlFrame = useRef<HTMLIFrameElement>(null);
@@ -396,10 +397,8 @@ function App() {
   const contextMenuElement = useRef<HTMLDivElement>(null);
   const contextMenuReturnFocus = useRef<HTMLElement | null>(null);
   const contextMenuScroll = useRef<HTMLDivElement>(null);
-  const libraryRestored = useRef(false);
-  const documentRestored = useRef(false);
-  const sessionReady = useRef(false);
-  const sessionWritable = useRef(true);
+  const unresolvedRoots = useRef(new Set<string>());
+  const appliedInterfaceScale = useRef(initialPreferences.interfaceScale);
   const lastPersisted = useRef<string>(undefined);
   const confirmDialog = useRef<HTMLDialogElement>(null);
   const sessionRef = useRef(session);
@@ -416,6 +415,11 @@ function App() {
   const workspace = session.workspace;
   const hasActiveItem = Boolean(activeDocument || activeNote);
   const htmlMode = activeDocument?.kind === "html";
+  const viewerZoom = fitToWidth
+    ? htmlMode
+      ? viewerMetrics ? Math.max(50, Math.min(200, Math.floor(viewerMetrics.viewportWidth / viewerMetrics.contentWidth * 100))) : preferences.viewerZoom
+      : 100
+    : preferences.viewerZoom;
   const dirty = Boolean(activeDocument && draftContent !== activeDocument.content);
   const editorKey = activeNote ? `note:${activeNote.id}` : activeDocument ? `document:${activeDocument.path}` : "";
   const editorLanguage = activeNote ? "text" : activeDocument?.kind;
@@ -746,7 +750,7 @@ function App() {
   }, [activeNoteId, updateSession]);
 
   useEffect(() => {
-    if (!sessionReady.current || !activeDocument) return;
+    if (!activeDocument) return;
     updateSession((current) => ({
       ...current,
       documents: updateDocumentRecovery(
@@ -763,65 +767,80 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    const restore = async () => {
-      const savedRoots = readStored<string[]>("vellum.library:v1", []);
-      const entries = await Promise.all(savedRoots.map(async (path) => {
-        try { return await invoke<Entry>("scan_path", { path }); } catch { return undefined; }
+    const selection = openRequest.current;
+    const cachedRecent = initialRecent.current;
+    const storedPaths = readStored<unknown>("vellum.library:v1", []);
+    const savedRoots = Array.isArray(storedPaths) ? storedPaths.filter((path): path is string => typeof path === "string") : [];
+    unresolvedRoots.current = new Set(savedRoots);
+    const scans = new Map([...unresolvedRoots.current].map((path) => [path, (async () => {
+      try {
+        const entry = await invoke<Entry>("scan_path", { path });
+        if (cancelled || !unresolvedRoots.current.delete(path)) return undefined;
+        if (!rootsRef.current.some((item) => item.path === entry.path)) {
+          rootsRef.current = [...rootsRef.current, entry];
+        }
+        // User-initiated scans can finish before saved roots are restored.
+        // Keep an entry the user has already added or refreshed.
+        setRoots((current) => current.some((item) => item.path === entry.path) ? [...current] : [...current, entry]);
+        return entry;
+      } catch {
+        // Keep unavailable paths so they can be retried after reconnecting.
+        return undefined;
+      }
+    })()]));
+
+    const restoreActive = async () => {
+      const { active } = startup.session;
+      if (!startup.documentPath && active?.type === "note") {
+        openNote(active.id);
+        return;
+      }
+      const path = startup.documentPath ?? (active?.type === "document" ? active.path : undefined);
+      if (!path) return;
+      if (!startup.documentPath && startup.session.documents.some((item) => item.path === path && item.draft)) {
+        openDraft(path);
+        return;
+      }
+      const root = savedRoots.find((candidate) => pathIsInside(candidate, path));
+      if (root) await scans.get(root);
+      if (!cancelled && selection === openRequest.current) await openDocument(path);
+    };
+
+    const refreshLibrary = async () => {
+      const results = await Promise.all(scans.values());
+      if (cancelled) return;
+      const restored = results.filter((entry): entry is Entry => Boolean(entry));
+      const incomplete = restored.filter((entry) => entry.scanWarning);
+      if (incomplete.length === 1) {
+        setError((current) => current ?? `${incomplete[0].name}: ${incomplete[0].scanWarning}`);
+      } else if (incomplete.length > 1) {
+        setError((current) => current ?? `Some files were skipped in ${incomplete.length} folders that exceeded Vellum's scan limits.`);
+      }
+
+      const recentPaths = cachedRecent.length ? cachedRecent.map((item) => item.path) : restored.map((entry) => entry.path);
+      const refreshed = await Promise.all(recentPaths.filter((path) => rootForPath(restored, path)).map(async (path) => {
+        try {
+          return { path, modifiedMs: await invoke<number>("path_recent_ms", { path }) };
+        } catch {
+          return undefined;
+        }
       }));
       if (cancelled) return;
-      const restored = entries.filter((entry): entry is Entry => Boolean(entry));
-      const missing = new Set(savedRoots.filter((_, index) => !entries[index]));
-      setRoots(restored);
-      rootsRef.current = restored;
-      const storedRecent = readStored<RecentItem[]>("vellum.recent:v2", []);
-      const recentPaths = storedRecent.length ? storedRecent.map((item) => item.path) : restored.map((entry) => entry.path);
-      const refreshedRecent = await Promise.all(recentPaths.filter((path) => !missing.has(path)).map(async (path) => ({
-        path,
-        modifiedMs: await invoke<number>("path_recent_ms", { path }).catch(() => 0),
-      })));
-      if (cancelled) return;
-      setRecent(refreshedRecent);
-      setPinned((current) => current.filter((path) => !missing.has(path)));
-      libraryRestored.current = true;
-      const startupDocument = readStored<string | undefined>("vellum.startup-document:v1", undefined);
-      localStorage.removeItem("vellum.startup-document:v1");
-      let restoredSession = emptySession();
-      try {
-        const stored = isTauri()
-          ? await invoke<string | null>("load_session")
-          : localStorage.getItem("vellum.session:v1");
-        if (stored) restoredSession = JSON.parse(stored) as SessionState;
-      } catch (cause) {
-        sessionWritable.current = false;
-        if (!cancelled) setError(`Vellum could not load its recovery session: ${String(cause)}`);
-      }
-      if (cancelled) return;
-      sessionRef.current = restoredSession;
-      setSession(restoredSession);
-      sessionReady.current = true;
-      if (startupDocument) {
-        await openDocument(startupDocument);
-      } else if (restoredSession.active?.type === "note") {
-        openNote(restoredSession.active.id);
-      } else if (restoredSession.active?.type === "document") {
-        const activePath = restoredSession.active.path;
-        const activeRecovery = restoredSession.documents.find((document) => document.path === activePath);
-        if (activeRecovery?.draft) openDraft(activePath);
-        else await openDocument(activePath);
-      }
-      if (!cancelled) {
-        documentRestored.current = true;
-        const incomplete = restored.filter((entry) => entry.scanWarning);
-        if (incomplete.length === 1) {
-          setError((current) => current ?? `${incomplete[0].name}: ${incomplete[0].scanWarning}`);
-        } else if (incomplete.length > 1) {
-          setError((current) => current ?? `Some files were skipped in ${incomplete.length} folders that exceeded Vellum's scan limits.`);
+      const byPath = new Map(refreshed.flatMap((item) => item ? [[item.path, item]] : []));
+      if (byPath.size === 0) return;
+      setRecent((current) => {
+        if (!cachedRecent.length) {
+          return [...current, ...[...byPath.values()].filter((item) => !current.some(({ path }) => path === item.path))].slice(0, maxRecentCount);
         }
-      }
+        const initialByPath = new Map(cachedRecent.map((item) => [item.path, item]));
+        return current.map((item) => initialByPath.get(item.path) === item ? byPath.get(item.path) ?? item : item);
+      });
     };
-    void restore();
+
+    void restoreActive();
+    void refreshLibrary();
     return () => { cancelled = true; };
-  }, [openDocument, openDraft, openNote]);
+  }, [openDocument, openDraft, openNote, startup]);
 
   // A second launch no longer starts its own process; the single-instance
   // plugin hands its arguments to this window instead. The sidebar is left
@@ -865,13 +884,18 @@ function App() {
     document.documentElement.style.setProperty("--reading-width", `${preferences.readingWidth}px`);
     document.documentElement.style.setProperty("--font-scale", String(preferences.fontScale / 100));
     document.documentElement.style.setProperty("--line-height", String(preferences.lineHeight / 100));
-    document.documentElement.style.setProperty("--viewer-zoom", `${preferences.viewerZoom}%`);
     document.documentElement.style.setProperty("--sidebar-motion", `${sidebarMotionMs[preferences.sidebarMotion] ?? 700}ms`);
     localStorage.setItem("vellum.preferences:v2", JSON.stringify(preferences));
   }, [preferences]);
 
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty("--viewer-zoom", `${viewerZoom}%`);
+  }, [viewerZoom]);
+
   useEffect(() => {
-    if (isTauri()) void getCurrentWebview().setZoom(preferences.interfaceScale / 100);
+    if (appliedInterfaceScale.current === preferences.interfaceScale) return;
+    appliedInterfaceScale.current = preferences.interfaceScale;
+    void applyInterfaceScale(preferences.interfaceScale);
   }, [preferences.interfaceScale]);
 
   useEffect(() => {
@@ -908,7 +932,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (libraryRestored.current) localStorage.setItem("vellum.library:v1", JSON.stringify(roots.map((entry) => entry.path)));
+    const paths = new Set([...roots.map((entry) => entry.path), ...unresolvedRoots.current]);
+    localStorage.setItem("vellum.library:v1", JSON.stringify([...paths]));
   }, [roots]);
   useEffect(() => localStorage.setItem("vellum.recent:v2", JSON.stringify(recent)), [recent]);
   useEffect(() => localStorage.setItem("vellum.pinned:v2", JSON.stringify(pinned)), [pinned]);
@@ -916,9 +941,9 @@ function App() {
   useEffect(() => localStorage.setItem("vellum.pinOrder:v1", JSON.stringify(pinOrder)), [pinOrder]);
   useEffect(() => localStorage.setItem("vellum.folderWorkspaces:v1", JSON.stringify(folderWorkspaces)), [folderWorkspaces]);
   useEffect(() => {
-    if (startupLaunch.current) return;
+    if (startupLaunch) return;
     localStorage.setItem("vellum.sidebarOpen:v1", JSON.stringify(sidebarOpen));
-  }, [sidebarOpen]);
+  }, [sidebarOpen, startupLaunch]);
   useEffect(() => localStorage.setItem("vellum.collapsedSections:v1", JSON.stringify(collapsedSections)), [collapsedSections]);
 
   // The effect below is a trailing debounce, so typing produces one write per
@@ -927,28 +952,28 @@ function App() {
   // changing its contents. Marked persisted only after the write succeeds, so
   // a failed write is retried rather than silently swallowed.
   const persistSession = useCallback(async (value: SessionState) => {
-    if (!sessionWritable.current) return;
+    if (startup.sessionError) return;
     const serialized = JSON.stringify(value);
     if (serialized === lastPersisted.current) return;
     if (isTauri()) await invoke("save_session", { session: serialized });
     else localStorage.setItem("vellum.session:v1", serialized);
     lastPersisted.current = serialized;
-  }, []);
+  }, [startup.sessionError]);
 
   useEffect(() => {
-    if (!sessionReady.current || !sessionWritable.current) return;
+    if (startup.sessionError) return;
     const timer = window.setTimeout(() => {
       void persistSession(session).catch((cause) => setError(`Vellum could not save its recovery session: ${String(cause)}`));
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [persistSession, session]);
+  }, [persistSession, session, startup.sessionError]);
 
   useEffect(() => {
-    if (!documentRestored.current) return;
     localStorage.removeItem("vellum.document:v1");
     localStorage.removeItem("vellum.tabs:v1");
     localStorage.removeItem("vellum.activeTab:v1");
-  }, [session.active]);
+    localStorage.removeItem("vellum.startup-document:v1");
+  }, []);
 
   useEffect(() => {
     if (!appWindow) return;
@@ -975,7 +1000,10 @@ function App() {
       if (event.data?.type === "vellum-viewer-metrics") {
         const contentWidth = Number(event.data.contentWidth);
         const viewportWidth = Number(event.data.viewportWidth);
-        if (Number.isFinite(contentWidth) && Number.isFinite(viewportWidth) && contentWidth > 0 && viewportWidth > 0) setViewerMetrics({ contentWidth, viewportWidth });
+        if (Number.isFinite(contentWidth) && Number.isFinite(viewportWidth) && contentWidth > 0 && viewportWidth > 0) {
+          setViewerMetrics((current) => current?.contentWidth === contentWidth && current.viewportWidth === viewportWidth
+            ? current : { contentWidth, viewportWidth });
+        }
         return;
       }
       if (event.data?.type === "vellum-viewer-warning") {
@@ -1024,12 +1052,6 @@ function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!fitToWidth) return;
-    const nextZoom = htmlMode && viewerMetrics ? Math.max(50, Math.min(200, Math.floor(viewerMetrics.viewportWidth / viewerMetrics.contentWidth * 100))) : 100;
-    setPreferences((current) => current.viewerZoom === nextZoom ? current : { ...current, viewerZoom: nextZoom });
-  }, [fitToWidth, htmlMode, viewerMetrics]);
-
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     const modifier = event.metaKey || event.ctrlKey;
     if (event.key === "Escape" && contextMenu) { dismissContextMenu(); return; }
@@ -1076,8 +1098,13 @@ function App() {
 
   useEffect(() => {
     if (!htmlMode || editMode) return;
-    htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: preferences.viewerZoom }, "*");
-  }, [editMode, htmlMode, preferences.viewerZoom]);
+    htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: viewerZoom }, "*");
+  }, [editMode, htmlMode, viewerZoom]);
+
+  useEffect(() => {
+    if (!htmlMode || editMode) return;
+    htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-fit", enabled: fitToWidth }, "*");
+  }, [editMode, fitToWidth, htmlMode]);
 
   const pinnedEntries = pinned.flatMap((path) => {
     if (session.documents.some((document) => document.path === path)) return [];
@@ -1125,6 +1152,7 @@ function App() {
     (workspace === "notes" && visibleNotePins.has(key)) || visibleDocumentPins.has(key));
 
   function removeSidebarItem(path: string) {
+    unresolvedRoots.current.delete(path);
     setRecent((current) => current.filter((item) => item.path !== path));
     setPinned((current) => current.filter((item) => item !== path));
     setPinOrder((current) => current.filter((key) => key !== pinKey("document", path)));
@@ -1229,8 +1257,9 @@ function App() {
   }
 
   function fitViewer() {
+    if (!fitToWidth) setViewerMetrics(undefined);
     setFitToWidth(true);
-    htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-measure" }, "*");
+    htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-fit", enabled: true }, "*");
   }
 
   function dismissContextMenu(restoreFocus = true) {
@@ -1565,14 +1594,14 @@ function App() {
 
   return (
     <main className={`app-shell ${htmlMode ? "html-mode" : ""} ${sidebarOpen ? "" : "sidebar-collapsed"} ${preferences.autoHideControls ? "" : "controls-always-visible"} ${draggedPinKey ? "pin-dragging" : ""}`} onContextMenu={showContextMenu}>
-      <div className={`global-drag-region ${sidebarOpen ? "sidebar-visible" : ""}`} role="presentation" data-tauri-drag-region onDoubleClick={() => appWindow?.toggleMaximize()} />
+      <div className={`global-drag-region ${sidebarOpen ? "sidebar-visible" : ""}`} style={{ right: windowControlsWidth }} role="presentation" data-tauri-drag-region onDoubleClick={() => appWindow?.toggleMaximize()} />
+      <WindowControls frameRef={htmlFrame} />
       <section className="workspace">
         <aside className="sidebar" aria-label="Workspace sidebar and application controls">
           <header className="sidebar-titlebar" data-tauri-drag-region>
             <div className="brand" data-tauri-drag-region>
               <span className="brand-name" data-tauri-drag-region><span className="brand-initial">V</span><span className="brand-rest">ellum</span></span>
             </div>
-            <WindowControls />
           </header>
           <nav className="sidebar-section workspace-switch" aria-label="Workspace">
             {(["documents", "notes"] as Workspace[]).map((value) => (
@@ -1635,7 +1664,7 @@ function App() {
             ) : activeDocument?.kind === "markdown" ? (
               <article key={activeDocument.path} className="document markdown-body" dangerouslySetInnerHTML={{ __html: renderedMarkdown }} />
             ) : activeDocument ? (
-              <iframe key={activeDocument.path} ref={htmlFrame} className="html-frame" title={activeDocument.name} srcDoc={renderedHtml} sandbox="allow-forms allow-scripts" allow="clipboard-write" referrerPolicy="no-referrer" onLoad={() => { htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: preferences.viewerZoom }, "*"); htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-measure" }, "*"); }} />
+              <iframe key={activeDocument.path} ref={htmlFrame} className="html-frame" title={activeDocument.name} srcDoc={renderedHtml} sandbox="allow-forms allow-scripts" allow="clipboard-write" referrerPolicy="no-referrer" onLoad={() => { htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-zoom", zoom: viewerZoom }, "*"); htmlFrame.current?.contentWindow?.postMessage({ type: "vellum-fit", enabled: fitToWidth }, "*"); }} />
             ) : null}
           </div>
           {hasActiveItem ? <div className="document-controls-wrap"><div className="document-controls" aria-label={activeNote || editMode ? "Editor controls" : "Viewer controls"}>
@@ -1675,10 +1704,10 @@ function App() {
                 </div>
               </details>
             </> : <>
-              <button type="button" onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Math.max(50, current.viewerZoom - 10) })); }} title="Zoom out" aria-label="Zoom out"><ZoomOut size={15} /></button>
-              <button type="button" className="zoom-value" onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: 100 })); }} title="Reset viewer zoom" aria-label={`Reset viewer zoom, currently ${preferences.viewerZoom}%`}>{preferences.viewerZoom}%</button>
+              <button type="button" onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Math.max(50, viewerZoom - 10) })); }} title="Zoom out" aria-label="Zoom out"><ZoomOut size={15} /></button>
+              <button type="button" className="zoom-value" onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: 100 })); }} title="Reset viewer zoom" aria-label={`Reset viewer zoom, currently ${viewerZoom}%`}>{viewerZoom}%</button>
               <button type="button" className={fitToWidth ? "active" : ""} onClick={fitViewer} title="Fit to width" aria-label="Fit document to width"><Scan size={15} /></button>
-              <button type="button" onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Math.min(200, current.viewerZoom + 10) })); }} title="Zoom in" aria-label="Zoom in"><ZoomIn size={15} /></button>
+              <button type="button" onClick={() => { setFitToWidth(false); setPreferences((current) => ({ ...current, viewerZoom: Math.min(200, viewerZoom + 10) })); }} title="Zoom in" aria-label="Zoom in"><ZoomIn size={15} /></button>
             </>}
             {/* Outside the mode branches so these keep one fixed position in
                 both modes. Reload and Close previously lived only in the
